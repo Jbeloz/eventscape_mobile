@@ -1,0 +1,190 @@
+import { create } from 'zustand'
+import { supabase } from '../services/supabase'
+
+interface User {
+  id: string
+  email: string
+  name?: string
+  role?: string
+}
+
+interface AuthState {
+  user: User | null
+  loading: boolean
+  error: string | null
+  signUp: (email: string, password: string, name: string) => Promise<void>
+  signIn: (email: string, password: string) => Promise<void>
+  signOut: () => Promise<void>
+  getCurrentUser: () => Promise<void>
+}
+
+export const useAuth = create<AuthState>((set) => ({
+  user: null,
+  loading: false,
+  error: null,
+
+  signUp: async (email: string, password: string, name: string) => {
+    set({ loading: true, error: null })
+    try {
+      // Register user with Supabase Auth
+      const { data, error: authError } = await supabase.auth.signUp({
+        email,
+        password,
+      })
+
+      if (authError) {
+        throw authError
+      }
+
+      if (data.user) {
+        // Create user record in custom users table
+        // Split name into first_name and last_name
+        const nameParts = name.trim().split(' ')
+        const firstName = nameParts[0] || ''
+        const lastName = nameParts.slice(1).join(' ') || ''
+        
+        const { error: dbError } = await supabase.from('users').insert({
+          auth_id: data.user.id,
+          email: data.user.email,
+          first_name: firstName,
+          last_name: lastName,
+          user_role: 'customer',
+        })
+
+        if (dbError) {
+          throw dbError
+        }
+
+        // Send OTP to email for verification
+        const { error: otpError } = await supabase.auth.signInWithOtp({
+          email: email,
+        })
+
+        if (otpError) {
+          console.warn('OTP send warning:', otpError.message)
+          // Don't throw - the email might still be sent
+        }
+
+        // Do NOT set user state here - user must verify email first
+        // Only create the database record
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Sign up failed'
+      set({ error: errorMessage })
+      throw error
+    } finally {
+      set({ loading: false })
+    }
+  },
+
+  signIn: async (email: string, password: string) => {
+    set({ loading: true, error: null })
+    try {
+      const { data, error: authError } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      })
+
+      if (authError) {
+        throw authError
+      }
+
+      if (data.user) {
+        // Fetch user details from custom users table by auth_id
+        const { data: userData, error: dbError } = await supabase
+          .from('users')
+          .select('*')
+          .eq('auth_id', data.user.id)
+          .single()
+
+        if (dbError && dbError.code !== 'PGRST116') {
+          // Only throw if it's not a "no rows found" error
+          throw dbError
+        }
+
+        // Prevent administrator accounts from signing in
+        if (userData?.user_role === 'administrator') {
+          throw new Error('Not authorized to sign in here')
+        }
+
+        set({
+          user: {
+            id: data.user.id,
+            email: data.user.email || '',
+            name: userData ? `${userData.first_name || ''} ${userData.last_name || ''}`.trim() : undefined,
+            role: userData?.user_role,
+          },
+        })
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Sign in failed'
+      set({ error: errorMessage })
+      throw error
+    } finally {
+      set({ loading: false })
+    }
+  },
+
+  signOut: async () => {
+    set({ loading: true, error: null })
+    try {
+      const { error } = await supabase.auth.signOut()
+
+      if (error) {
+        throw error
+      }
+
+      set({ user: null })
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Sign out failed'
+      set({ error: errorMessage })
+      throw error
+    } finally {
+      set({ loading: false })
+    }
+  },
+
+  getCurrentUser: async () => {
+    set({ loading: true, error: null })
+    try {
+      const {
+        data: { user: authUser },
+        error: authError,
+      } = await supabase.auth.getUser()
+
+      if (authError) {
+        throw authError
+      }
+
+      if (authUser) {
+        // Fetch user details from custom users table by auth_id
+        const { data: userData, error: dbError } = await supabase
+          .from('users')
+          .select('*')
+          .eq('auth_id', authUser.id)
+          .single()
+
+        if (dbError && dbError.code !== 'PGRST116') {
+          // PGRST116 means no rows found, which is acceptable
+          throw dbError
+        }
+
+        set({
+          user: {
+            id: authUser.id,
+            email: authUser.email || '',
+            name: userData ? `${userData.first_name || ''} ${userData.last_name || ''}`.trim() : undefined,
+            role: userData?.user_role,
+          },
+        })
+      } else {
+        set({ user: null })
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Failed to get current user'
+      set({ error: errorMessage })
+    } finally {
+      set({ loading: false })
+    }
+  },
+}))

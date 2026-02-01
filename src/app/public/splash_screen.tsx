@@ -1,0 +1,108 @@
+import { useRouter } from "expo-router";
+import { useEffect } from "react";
+import { Image, StyleSheet, Text, View } from "react-native";
+import { Theme } from "../../../constants/theme";
+import { supabase } from "../../services/supabase";
+
+export default function SplashScreen() {
+  const router = useRouter();
+
+  useEffect(() => {
+    const checkSession = async () => {
+      try {
+        // Show splash screen for minimum 2 seconds for branding
+        await new Promise(resolve => setTimeout(resolve, 2000));
+
+        // Check if there's an active session
+        const { data: { session }, error } = await supabase.auth.getSession();
+        
+        console.log('Splash screen - Session check:', { hasSession: !!session?.user, error });
+        
+        if (error) {
+          console.error('Session check error:', error);
+          // If there's an error, clear the session to prevent auth loops
+          await supabase.auth.signOut();
+          console.log('Navigating to landing_screen (error)');
+          router.replace("/public/landing_screen");
+          return;
+        }
+
+        if (session?.user) {
+          // User is logged in, check their role
+          try {
+            const { data: userData, error: userError } = await supabase
+              .from('users')
+              .select('user_role')
+              .eq('auth_id', session.user.id)
+              .single();
+
+            if (userError && userError.code !== 'PGRST116') {
+              throw userError;
+            }
+
+            const userRole = userData?.user_role;
+            console.log('User role:', userRole);
+
+            // Route based on user role
+            if (userRole === 'event_organizer') {
+              console.log('Navigating to event organizer home');
+              router.replace("/users/event_organizer");
+            } else {
+              console.log('Navigating to customer');
+              router.replace("/users/customer");
+            }
+          } catch (roleError) {
+            console.error('Error fetching user role:', roleError);
+            // Default to customer if role can't be determined
+            router.replace("/users/customer");
+          }
+        } else {
+          // No active session, go to landing page
+          console.log('No session, navigating to landing_screen');
+          router.replace("/public/landing_screen");
+        }
+      } catch (error) {
+        console.error('Unexpected error during session check:', error);
+        // Clear any invalid session data
+        await supabase.auth.signOut();
+        console.log('Navigating to landing_screen (catch)');
+        router.replace("/public/landing_screen");
+      }
+    };
+
+    checkSession();
+  }, [router]);
+
+  return (
+    <View style={styles.container}>
+      {/* Logo */}
+      <Image
+        source={require("../../../assets/images/WeekenderEventLogo.png")}
+        style={styles.logo}
+      />
+
+      {/* Optional text */}
+      <Text style={styles.text}>Weekender Events</Text>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: Theme.colors.background,
+  },
+  logo: {
+    width: 120,
+    height: 120,
+    resizeMode: "contain",
+    marginBottom: Theme.spacing.lg, // space between logo and text
+  },
+  text: {
+    fontSize: 32,
+    fontFamily: Theme.fonts.bold,
+    color: Theme.colors.text,
+  },
+});

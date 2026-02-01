@@ -1,0 +1,59 @@
+import AsyncStorage from '@react-native-async-storage/async-storage'
+import { createClient } from '@supabase/supabase-js'
+import { AppState, Platform } from 'react-native'
+import 'react-native-url-polyfill/auto'
+
+const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL || ''
+const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || ''
+
+export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+  auth: {
+    storage: AsyncStorage,
+    autoRefreshToken: true,
+    persistSession: true,
+    detectSessionInUrl: false,
+  },
+})
+
+// Recover session from storage on app startup
+export async function recoverSession() {
+  try {
+    const session = await supabase.auth.getSession()
+    if (session?.data?.session) {
+      console.log('✅ Session recovered from storage')
+      return session.data.session
+    } else {
+      console.log('⚠️ No session found in storage')
+      return null
+    }
+  } catch (error) {
+    console.error('❌ Error recovering session:', error)
+    return null
+  }
+}
+
+// Handle auth errors globally
+supabase.auth.onAuthStateChange(async (event, session) => {
+  if (event === 'SIGNED_OUT') {
+    // Clear storage when user signs out
+    await AsyncStorage.removeItem('supabase.auth')
+  } else if (event === 'TOKEN_REFRESHED' && session) {
+    // Session refreshed successfully
+    console.log('✅ Session token refreshed')
+  } else if (event === 'SIGNED_IN') {
+    console.log('✅ User signed in')
+  }
+})
+
+// Handle app lifecycle for token refresh
+if (Platform.OS !== 'web') {
+  const subscription = AppState.addEventListener('change', async (state) => {
+    if (state === 'active') {
+      console.log('📱 App moved to foreground - starting auto refresh')
+      supabase.auth.startAutoRefresh()
+    } else {
+      console.log('📱 App moved to background - stopping auto refresh')
+      supabase.auth.stopAutoRefresh()
+    }
+  })
+}
