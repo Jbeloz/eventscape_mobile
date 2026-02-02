@@ -40,7 +40,7 @@ interface EditFormData {
   contactNumber: string;
 }
 
-export default function CustomerProfile() {
+export default function VenueAdminProfile() {
   const router = useRouter();
   const { user, signOut } = useAuth();
   const [notificationCount] = useState(1);
@@ -183,7 +183,7 @@ export default function CustomerProfile() {
 
       const userId = userData.user_id;
       const timestamp = Date.now();
-      const fileName = `customer_profile_pic_${userId}_${timestamp}`;
+      const fileName = `venue_admin_profile_pic_${userId}_${timestamp}`;
 
       const cloudName = process.env.EXPO_PUBLIC_CLOUDINARY_NAME;
       const uploadPreset = process.env.EXPO_PUBLIC_CLOUDINARY_PRESET;
@@ -253,7 +253,7 @@ export default function CustomerProfile() {
         .insert({
           user_id: userId,
           profile_photo: uploadData.public_id,
-          file_name: `customer_profile_pic_${userId}`,
+          file_name: `venue_admin_profile_pic_${userId}`,
           file_url: fileUrl,
           is_primary: true,
         })
@@ -405,7 +405,7 @@ export default function CustomerProfile() {
           <Text style={styles.profileName}>
             {userData.firstName} {userData.lastName}
           </Text>
-          <Text style={styles.profileRole}>Customer</Text>
+          <Text style={styles.profileRole}>Venue Administrator</Text>
 
           {/* Contact Info List */}
           <View style={styles.contactInfoContainer}>
@@ -605,7 +605,7 @@ export default function CustomerProfile() {
       </Modal>
 
       {/* Bottom Navigation - Fixed */}
-      <BottomNavRenderer role="customer" activeTab="profile" />
+      <BottomNavRenderer role="venue_administrator" activeTab="profile" />
     </SafeAreaView>
   );
 }

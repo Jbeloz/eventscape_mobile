@@ -1,17 +1,17 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useState } from "react";
 import {
-    Pressable,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    View
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Theme } from "../../../../constants/theme";
 import TopBar from "../../../components/top_bar";
-import EventOrganizerNavigation from "../../../components/user_navigation/event_organizer/event_organizer_navigation";
+import BottomNavRenderer from "../../../components/user_navigation/bottom_nav/BottomNavRenderer";
 
 interface Review {
   id: number;
@@ -154,7 +154,7 @@ export default function EventOrganizerReviewCenter() {
         </View>
       </ScrollView>
 
-      <EventOrganizerNavigation activeTab="review" />
+      <BottomNavRenderer role="event_organizer" activeTab="review" />
     </SafeAreaView>
   );
 }

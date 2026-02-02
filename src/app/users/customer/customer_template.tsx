@@ -1,15 +1,15 @@
 import { useState } from "react";
 import {
-    Pressable,
-    ScrollView,
-    StyleSheet,
-    Text,
-    View
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Theme } from "../../../../constants/theme";
 import TopBar from "../../../components/top_bar";
-import BottomNavigation from "../../../components/user_navigation/customer/customer_navigation";
+import BottomNavRenderer from "../../../components/user_navigation/bottom_nav/BottomNavRenderer";
 import CustomerThemeTemplates from "./customer_theme_templates";
 import CustomerVenueTemplates from "./customer_venue_templates";
 
@@ -70,7 +70,7 @@ export default function CustomerTemplates() {
       </ScrollView>
 
       {/* Bottom Navigation - Fixed */}
-      <BottomNavigation activeTab="templates" />
+      <BottomNavRenderer role="customer" activeTab="templates" />
     </SafeAreaView>
   );
 }

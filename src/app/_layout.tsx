@@ -25,15 +25,9 @@ export default function RootLayout() {
     <Stack 
       screenOptions={{ 
         headerShown: false,
-        animationEnabled: false,
       }}
     >
-      <Stack.Screen 
-        name="index"
-        options={{
-          animationEnabled: false,
-        }}
-      />
+      <Stack.Screen name="index" />
       <Stack.Screen name="public" />
       <Stack.Screen name="auth" />
       <Stack.Screen name="users" />

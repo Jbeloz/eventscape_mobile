@@ -53,117 +53,110 @@ export const useAuth = create<AuthState>((set) => ({
         throw authError
       }
 
-      if (data.user) {
-        // Create user record in custom users table
-        // Split name into first_name and last_name
-        const nameParts = name.trim().split(' ')
-        const firstName = nameParts[0] || ''
-        const lastName = nameParts.slice(1).join(' ') || ''
-        
-        const { data: userData, error: dbError } = await supabase.from('users').insert({
-          auth_id: data.user.id,
-          email: data.user.email,
+      if (!data.user?.id) {
+        throw new Error('Failed to create auth user')
+      }
+
+      // Split name into first_name and last_name
+      const nameParts = name.trim().split(' ')
+      const firstName = nameParts[0] || ''
+      const lastName = nameParts.slice(1).join(' ') || ''
+      
+      // Create user record in custom users table
+      const { data: userData, error: dbError } = await supabase
+        .from('users')
+        .insert({
+          auth_id: Math.abs(data.user.id.split('-').reduce((acc, part) => acc + parseInt(part, 16), 0)), // Convert UUID to integer hash
+          email: data.user.email?.toLowerCase() || '',
+          password_hash: 'managed_by_supabase_auth', // Placeholder - actual password managed by Supabase Auth
           first_name: firstName,
           last_name: lastName,
           user_role: 'customer',
-        }).select('user_id').single()
+        })
+        .select()
 
-        if (dbError) {
-          throw dbError
-        }
-
-        // Create customer record linked to the new user
-        if (userData?.user_id) {
-          try {
-            const { data: customerData, error: customerError } = await supabase
-              .from('customers')
-              .insert({
-                user_id: userData.user_id,
-                preferences: null,
-              })
-              .select()
-            
-            if (customerError) {
-              console.error('❌ Customer record insert error:', customerError)
-              console.error('Customer error code:', customerError.code)
-              console.error('Customer error details:', customerError.details)
-            } else {
-              console.log('✅ Customer record created:', customerData)
-            }
-          } catch (err: any) {
-            console.error('❌ Customer record exception:', err)
-          }
-        }
-
-        // Generate OTP code (6 digits)
-        const otpCode = Math.floor(100000 + Math.random() * 900000).toString()
-        const otpHash = hashToken(otpCode)
-        const expiryTime = new Date(Date.now() + 10 * 60 * 1000) // 10 minutes
-        
-        console.log('User ID from DB:', userData?.user_id)
-        console.log('Inserting OTP with user_id:', userData?.user_id)
-        
-        // Record OTP in database
-        if (userData?.user_id) {
-          try {
-            const { data: otpData, error: otpInsertError } = await supabase
-              .from('otp')
-              .insert({
-                user_id: userData.user_id,
-                otp_code_hash: otpHash,
-                otp_expiry: expiryTime.toISOString(),
-                otp_attempts: 0,
-                last_otp_sent: new Date().toISOString(),
-              })
-              .select()
-            
-            if (otpInsertError) {
-              console.error('❌ OTP insert error:', otpInsertError)
-              console.error('OTP error code:', otpInsertError.code)
-              console.error('OTP error details:', otpInsertError.details)
-            } else {
-              console.log('✅ OTP record created:', otpData)
-            }
-          } catch (err: any) {
-            console.error('❌ OTP record exception:', err)
-          }
-
-          // Create email verification record
-          try {
-            const emailTokenHash = hashToken(`${email}-${Date.now()}-${Math.random()}`)
-            const { data: emailVerifData, error: emailVerifError } = await supabase
-              .from('email_verification')
-              .insert({
-                user_id: userData.user_id,
-                email_token_hash: emailTokenHash,
-                expires_at: expiryTime.toISOString(),
-                is_verified: false,
-                last_token_sent: new Date().toISOString(),
-              })
-              .select()
-            
-            if (emailVerifError) {
-              console.error('❌ Email verification insert error:', emailVerifError)
-              console.error('Email verif error code:', emailVerifError.code)
-              console.error('Email verif error details:', emailVerifError.details)
-            } else {
-              console.log('✅ Email verification record created:', emailVerifData)
-            }
-          } catch (err: any) {
-            console.error('❌ Email verification exception:', err)
-          }
-        } else {
-          console.error('❌ user_id is not available:', userData)
-        }
-
-        // Send verification email with OTP code
-        // Note: The OTP code is logged to console for development
-        // Supabase automatically sends verification email on signup
-        console.log('📧 OTP Code:', otpCode)
-        console.log('✅ Account created! Verification email should be sent automatically by Supabase')
-
-        // Do NOT set user state here - user must verify email first
+      if (dbError) {
+        console.error('❌ User insert error:', dbError)
+        throw new Error(dbError.message || 'Failed to create user record')
       }
+
+      const user_id = userData?.[0]?.user_id
+      
+      if (!user_id) {
+        throw new Error('User record created but no user_id returned')
+      }
+
+      console.log('✅ User created with ID:', user_id)
+
+      // Create customer record linked to the new user
+      try {
+        const { error: customerError } = await supabase
+          .from('customers')
+          .insert({
+            user_id: user_id,
+            preferences: null,
+          })
+        
+        if (customerError) {
+          console.error('❌ Customer record insert error:', customerError)
+        } else {
+          console.log('✅ Customer record created')
+        }
+      } catch (err: any) {
+        console.error('❌ Customer record exception:', err)
+      }
+
+      // Generate OTP code (6 digits)
+      const otpCode = Math.floor(100000 + Math.random() * 900000).toString()
+      const otpHash = hashToken(otpCode)
+      const expiryTime = new Date(Date.now() + 10 * 60 * 1000) // 10 minutes
+      
+      // Record OTP in database
+      try {
+        const { error: otpInsertError } = await supabase
+          .from('otp')
+          .insert({
+            user_id: user_id,
+            otp_code_hash: otpHash,
+            otp_expiry: expiryTime.toISOString(),
+            otp_attempts: 0,
+            last_otp_sent: new Date().toISOString(),
+          })
+        
+        if (otpInsertError) {
+          console.error('❌ OTP insert error:', otpInsertError)
+        } else {
+          console.log('✅ OTP record created')
+        }
+      } catch (err: any) {
+        console.error('❌ OTP record exception:', err)
+      }
+
+      // Create email verification record
+      try {
+        const emailTokenHash = hashToken(`${data.user.email}-${Date.now()}-${Math.random()}`)
+        const { error: emailVerifError } = await supabase
+          .from('email_verification')
+          .insert({
+            user_id: user_id,
+            email_token_hash: emailTokenHash,
+            expires_at: expiryTime.toISOString(),
+            is_verified: false,
+            last_token_sent: new Date().toISOString(),
+          })
+        
+        if (emailVerifError) {
+          console.error('❌ Email verification insert error:', emailVerifError)
+        } else {
+          console.log('✅ Email verification record created')
+        }
+      } catch (err: any) {
+        console.error('❌ Email verification exception:', err)
+      }
+
+      // Log OTP code for development
+      console.log('📧 OTP Code:', otpCode)
+      console.log('✅ Account created! Verification email should be sent automatically by Supabase')
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Sign up failed'
       set({ error: errorMessage })
@@ -186,11 +179,11 @@ export const useAuth = create<AuthState>((set) => ({
       }
 
       if (data.user) {
-        // Fetch user details from custom users table by auth_id
+        // Fetch user details from custom users table by email (not auth_id)
         const { data: userData, error: dbError } = await supabase
           .from('users')
           .select('*')
-          .eq('auth_id', data.user.id)
+          .eq('email', email.toLowerCase())
           .single()
 
         if (dbError && dbError.code !== 'PGRST116') {
@@ -226,6 +219,7 @@ export const useAuth = create<AuthState>((set) => ({
           throw new Error('Session could not be established. Please try again.')
         }
 
+        console.log('🔍 Login - Found user:', userData?.email, 'Role:', userData?.user_role)
         set({
           user: {
             id: data.user.id,
@@ -282,7 +276,7 @@ export const useAuth = create<AuthState>((set) => ({
         const { data: userData } = await supabase
           .from('users')
           .select('user_id')
-          .eq('auth_id', data.user.id)
+          .eq('email', email.toLowerCase())
           .single()
 
         if (userData?.user_id) {
@@ -306,7 +300,7 @@ export const useAuth = create<AuthState>((set) => ({
         const { data: fullUserData } = await supabase
           .from('users')
           .select('*')
-          .eq('auth_id', data.user.id)
+          .eq('email', email.toLowerCase())
           .single()
 
         set({
@@ -350,7 +344,7 @@ export const useAuth = create<AuthState>((set) => ({
         const { data: userData } = await supabase
           .from('users')
           .select('user_id')
-          .eq('auth_id', data.user.id)
+          .eq('email', email.toLowerCase())
           .single()
 
         if (userData?.user_id) {
@@ -373,7 +367,7 @@ export const useAuth = create<AuthState>((set) => ({
         const { data: fullUserData } = await supabase
           .from('users')
           .select('*')
-          .eq('auth_id', data.user.id)
+          .eq('email', email.toLowerCase())
           .single()
 
         set({
@@ -419,11 +413,11 @@ export const useAuth = create<AuthState>((set) => ({
       }
 
       if (authUser) {
-        // Fetch user details from custom users table by auth_id
+        // Fetch user details from custom users table by email (not auth_id)
         const { data: userData, error: dbError } = await supabase
           .from('users')
           .select('*')
-          .eq('auth_id', authUser.id)
+          .eq('email', authUser.email?.toLowerCase() || '')
           .single()
 
         if (dbError && dbError.code !== 'PGRST116') {
@@ -619,7 +613,7 @@ export const useAuth = create<AuthState>((set) => ({
       const { data: userData, error: userError } = await supabase
         .from('users')
         .select('user_id')
-        .eq('auth_id', authData.user.id)
+        .eq('email', authData.user.email?.toLowerCase() || '')
         .single()
 
       if (userData) {

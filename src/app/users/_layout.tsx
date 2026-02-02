@@ -26,6 +26,8 @@ export default function UsersLayout() {
     >
       <Stack.Screen name="customer" />
       <Stack.Screen name="event_organizer" />
+      <Stack.Screen name="coordinator" />
+      <Stack.Screen name="venue_administrator" />
     </Stack>
   );
 }

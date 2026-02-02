@@ -30,10 +30,11 @@ export default function SplashScreen() {
         if (session?.user) {
           // User is logged in, check their role
           try {
+            // Query by email instead of auth_id (using email-based lookup system)
             const { data: userData, error: userError } = await supabase
               .from('users')
               .select('user_role')
-              .eq('auth_id', session.user.id)
+              .eq('email', session.user.email?.toLowerCase() || '')
               .single();
 
             if (userError && userError.code !== 'PGRST116') {
@@ -47,14 +48,23 @@ export default function SplashScreen() {
             if (userRole === 'event_organizer') {
               console.log('Navigating to event organizer home');
               router.replace("/users/event_organizer");
-            } else {
-              console.log('Navigating to customer');
+            } else if (userRole === 'venue_administrator') {
+              console.log('Navigating to venue administrator home');
+              router.replace("/users/venue_administrator");
+            } else if (userRole === 'coordinator') {
+              console.log('Navigating to coordinator home');
+              router.replace("/users/coordinator");
+            } else if (userRole === 'customer') {
+              console.log('Navigating to customer home');
               router.replace("/users/customer");
+            } else {
+              console.log('Unknown role, navigating to users for routing');
+              router.replace("/users");
             }
           } catch (roleError) {
             console.error('Error fetching user role:', roleError);
-            // Default to customer if role can't be determined
-            router.replace("/users/customer");
+            // Navigate to /users and let the index.tsx handle the routing
+            router.replace("/users");
           }
         } else {
           // No active session, go to landing page

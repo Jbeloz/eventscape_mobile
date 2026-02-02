@@ -2,17 +2,17 @@ import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import {
-    Modal,
-    Pressable,
-    ScrollView,
-    StyleSheet,
-    Text,
-    View
+  Modal,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Theme } from "../../../../constants/theme";
 import TopBar from "../../../components/top_bar";
-import EventOrganizerNavigation from "../../../components/user_navigation/event_organizer/event_organizer_navigation";
+import BottomNavRenderer from "../../../components/user_navigation/bottom_nav/BottomNavRenderer";
 import { useAuth } from "../../../hooks/use-auth";
 
 const ACCOUNT_ACTIONS = [
@@ -251,7 +251,7 @@ export default function EventOrganizerProfile() {
       </Modal>
 
       {/* Bottom Navigation - Fixed */}
-      <EventOrganizerNavigation activeTab="profile" />
+      <BottomNavRenderer role="event_organizer" activeTab="profile" />
     </SafeAreaView>
   );
 }

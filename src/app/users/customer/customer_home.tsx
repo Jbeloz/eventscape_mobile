@@ -1,16 +1,16 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useState } from "react";
 import {
-    Pressable,
-    ScrollView,
-    StyleSheet,
-    Text,
-    View
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Theme } from "../../../../constants/theme";
 import TopBar from "../../../components/top_bar";
-import BottomNavigation from "../../../components/user_navigation/customer/customer_navigation";
+import BottomNavRenderer from "../../../components/user_navigation/bottom_nav/BottomNavRenderer";
 
 const STATS = [
   { id: 1, number: "4", label: "My Events", icon: "calendar-outline" },
@@ -103,7 +103,7 @@ export default function CustomerHome() {
       </ScrollView>
 
       {/* Bottom Navigation */}
-      <BottomNavigation activeTab="home" />
+      <BottomNavRenderer role="customer" activeTab="home" />
     </SafeAreaView>
   );
 }

@@ -1,18 +1,18 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useState } from "react";
 import {
-    ImageBackground,
-    Pressable,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    View,
+  ImageBackground,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Theme } from "../../../../constants/theme";
 import TopBar from "../../../components/top_bar";
-import BottomNavigation from "../../../components/user_navigation/customer/customer_navigation";
+import BottomNavRenderer from "../../../components/user_navigation/bottom_nav/BottomNavRenderer";
 
 // Project Card Component
 interface ProjectCardProps {
@@ -169,7 +169,7 @@ export default function CustomerMyEdit() {
         </View>
       </ScrollView>
 
-      <BottomNavigation activeTab="my_edit" />
+      <BottomNavRenderer role="customer" activeTab="my_edit" />
     </SafeAreaView>
   );
 }

@@ -2,12 +2,12 @@ import { Ionicons } from "@expo/vector-icons";
 import { useNavigation, useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import {
-  ActivityIndicator,
-  Pressable,
-  StyleSheet,
-  Text,
-  TextInput,
-  View
+    ActivityIndicator,
+    Pressable,
+    StyleSheet,
+    Text,
+    TextInput,
+    View
 } from "react-native";
 import { Theme } from "../../../constants/theme";
 import ErrorSuccessModal from "../../components/error_success_modal";
@@ -16,10 +16,10 @@ import PolicyModal from "../../components/policy_modal";
 import { useAuth } from "../../hooks/use-auth";
 import { supabase } from "../../services/supabase";
 import {
-  validateEmail,
-  validateName,
-  validatePassword,
-  validatePasswordMatch
+    validateEmail,
+    validateName,
+    validatePassword,
+    validatePasswordMatch
 } from "../../utils/validation";
 import EmailVerification from "./email_verification";
 
@@ -193,19 +193,21 @@ export default function Register() {
       if (email.trim() && validateEmail(email)) {
         setCheckingEmail(true);
         try {
-          const { data, error: checkError } = await supabase
+          const { data, error: checkError, count } = await supabase
             .from('users')
-            .select('email')
-            .eq('email', email.toLowerCase())
-            .single();
+            .select('user_id', { count: 'exact', head: true })
+            .eq('email', email.toLowerCase());
 
-          if (data) {
+          if (checkError) {
+            console.error('Email check error:', checkError);
+            setEmailExists(false);
+          } else if (count && count > 0) {
             setEmailExists(true);
           } else {
             setEmailExists(false);
           }
         } catch (err) {
-          // No matching email found, which is good
+          console.error('Email check exception:', err);
           setEmailExists(false);
         } finally {
           setCheckingEmail(false);

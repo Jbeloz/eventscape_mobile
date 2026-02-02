@@ -1,17 +1,17 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useState } from "react";
 import {
-    Dimensions,
-    Pressable,
-    ScrollView,
-    StyleSheet,
-    Text,
-    View
+  Dimensions,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Theme } from "../../../../constants/theme";
 import TopBar from "../../../components/top_bar";
-import EventOrganizerNavigation from "../../../components/user_navigation/event_organizer/event_organizer_navigation";
+import BottomNavRenderer from "../../../components/user_navigation/bottom_nav/BottomNavRenderer";
 
 interface Project {
   id: number;
@@ -118,7 +118,7 @@ export default function EventOrganizerProjects() {
         </View>
       </ScrollView>
 
-      <EventOrganizerNavigation activeTab="activities" />
+      <BottomNavRenderer role="event_organizer" activeTab="activities" />
     </SafeAreaView>
   );
 }
