@@ -1,7 +1,9 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
+  ActivityIndicator,
+  Alert,
   Image,
   Pressable,
   SafeAreaView,
@@ -14,42 +16,123 @@ import {
 import { Theme } from "../../../../../constants/theme";
 import TopBar from "../../../../components/top_bar";
 import BottomNavRenderer from "../../../../components/user_navigation/bottom_nav/BottomNavRenderer";
+import { useAuth } from "../../../../hooks/use-auth";
+import { supabase } from "../../../../services/supabase";
 
 interface Venue {
-  id: string;
-  name: string;
-  address: string;
-  type: string;
-  capacity: string;
-  image: string;
+  venue_id: string;
+  venue_name: string;
+  street_address: string;
+  barangay: string;
+  city: string;
+  province: string;
+  max_capacity: number;
+  venue_type_id: string;
+  type_name?: string;
+  image_uri?: string;
 }
-
-const MOCK_VENUES: Venue[] = [
-  {
-    id: "1",
-    name: "The Palm at San Francisco",
-    address: "The Palm at San Francisco, 756 Esguerra, Poblacion, Pullian, 3005 Bulacan",
-    type: "Ballroom and Hall",
-    capacity: "Capacity / Guest Limit: 250 Person (Pax)",
-    image: "https://via.placeholder.com/300x200?text=The+Palm",
-  },
-  {
-    id: "2",
-    name: "Grand Hotel Ballroom",
-    address: "123 Main Street, San Francisco, CA 94102",
-    type: "Convention Center",
-    capacity: "Capacity / Guest Limit: 500 Person (Pax)",
-    image: "https://via.placeholder.com/300x200?text=Grand+Hotel",
-  },
-];
 
 export default function VenueAdminMyVenue() {
   const router = useRouter();
+  const { user } = useAuth();
   const [notificationCount] = useState(0);
   const [searchQuery, setSearchQuery] = useState("");
+  const [venues, setVenues] = useState<Venue[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
-  const filteredVenues = MOCK_VENUES.filter((venue) =>
-    venue.name.toLowerCase().includes(searchQuery.toLowerCase())
+  // Fetch user ID and venues
+  useEffect(() => {
+    if (user?.id) {
+      fetchUserIdAndVenues(user.id);
+    }
+  }, [user]);
+
+  const fetchUserIdAndVenues = async (authId: string) => {
+    try {
+      setLoading(true);
+
+      // First, get the user_id from the users table
+      const { data: userData, error: userError } = await supabase
+        .from("users")
+        .select("user_id")
+        .eq("auth_id", authId)
+        .single();
+
+      if (userError || !userData?.user_id) {
+        console.error("Error fetching user:", userError);
+        setLoading(false);
+        return;
+      }
+
+      const userId = userData.user_id.toString();
+      setCurrentUserId(userId);
+
+      // Fetch all venues created by this user (simple query without complex joins)
+      const { data: venuesData, error: venuesError } = await supabase
+        .from("venues")
+        .select("*")
+        .eq("created_by", userId)
+        .order("created_at", { ascending: false });
+
+      if (venuesError) {
+        console.error("Error fetching venues:", venuesError);
+        setLoading(false);
+        return;
+      }
+
+      // For each venue, fetch its type name and first image
+      const formattedVenues: Venue[] = await Promise.all(
+        (venuesData || []).map(async (venue: any) => {
+          let typeName = "Unknown Type";
+          let imageUri = "https://via.placeholder.com/300x200?text=No+Image";
+
+          // Fetch venue type
+          if (venue.venue_type_id) {
+            const { data: typeData } = await supabase
+              .from("venue_types")
+              .select("type_name")
+              .eq("venue_type_id", venue.venue_type_id)
+              .single();
+            if (typeData) typeName = typeData.type_name;
+          }
+
+          // Fetch first image
+          const { data: imagesData } = await supabase
+            .from("venue_images")
+            .select("image_path")
+            .eq("venue_id", venue.venue_id)
+            .limit(1);
+          if (imagesData && imagesData.length > 0) {
+            imageUri = imagesData[0].image_path;
+          }
+
+          return {
+            venue_id: venue.venue_id,
+            venue_name: venue.venue_name,
+            street_address: venue.street_address,
+            barangay: venue.barangay,
+            city: venue.city,
+            province: venue.province,
+            max_capacity: venue.max_capacity,
+            venue_type_id: venue.venue_type_id,
+            type_name: typeName,
+            image_uri: imageUri,
+          };
+        })
+      );
+
+      setVenues(formattedVenues);
+    } catch (err) {
+      console.error("Error in fetchUserIdAndVenues:", err);
+      Alert.alert("Error", "Failed to load venues");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const filteredVenues = venues.filter((venue) =>
+    venue.venue_name.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   return (
@@ -84,52 +167,75 @@ export default function VenueAdminMyVenue() {
           <Ionicons name="options" size={18} color="#999" />
         </View>
 
-        {/* Venue Cards */}
-        <View style={styles.venueList}>
-          {filteredVenues.map((venue) => (
-            <Pressable
-              key={venue.id}
-              style={styles.venueCard}
-              onPress={() =>
-                router.push({
-                  pathname: "./venue_admin_venue_details",
-                  params: { venueId: venue.id },
-                })
-              }
-            >
-              {/* Venue Images Container */}
-              <View style={styles.imagesContainer}>
-                <Image
-                  source={{ uri: venue.image }}
-                  style={styles.venueImage}
-                />
-                <Image
-                  source={{ uri: venue.image }}
-                  style={[styles.venueImage, styles.venueImageSecond]}
-                />
-              </View>
-
-              {/* Venue Info */}
-              <View style={styles.venueInfo}>
-                <Text style={styles.venueName}>{venue.name}</Text>
-                <Text style={styles.venueAddress}>{venue.address}</Text>
-
-                <View style={styles.detailsRow}>
-                  <Text style={styles.capacity}>{venue.capacity}</Text>
+        {/* Loading Indicator */}
+        {loading ? (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color={Theme.colors.primary} />
+            <Text style={styles.loadingText}>Loading venues...</Text>
+          </View>
+        ) : filteredVenues.length === 0 ? (
+          <View style={styles.emptyContainer}>
+            <Ionicons name="location-outline" size={48} color="#CCC" />
+            <Text style={styles.emptyText}>
+              {venues.length === 0 ? "No venues yet. Create your first venue!" : "No venues match your search"}
+            </Text>
+          </View>
+        ) : (
+          /* Venue Cards */
+          <View style={styles.venueList}>
+            {filteredVenues.map((venue) => (
+              <Pressable
+                key={venue.venue_id}
+                style={styles.venueCard}
+                onPress={() =>
+                  router.push({
+                    pathname: "/users/venue_administrator/my_venue/venue_admin_venue_details",
+                    params: { venueId: venue.venue_id },
+                  })
+                }
+              >
+                {/* Venue Images Container */}
+                <View style={styles.imagesContainer}>
+                  <Image
+                    source={{ uri: venue.image_uri }}
+                    style={styles.venueImage}
+                  />
                 </View>
 
-                <View style={styles.typeRow}>
-                  <Text style={styles.venueType}>Venue Type: {venue.type}</Text>
-                </View>
+                {/* Venue Info */}
+                <View style={styles.venueInfo}>
+                  <Text style={styles.venueName}>{venue.venue_name}</Text>
+                  <Text style={styles.venueAddress}>
+                    {venue.street_address}, {venue.barangay}, {venue.city}, {venue.province}
+                  </Text>
 
-                {/* View Details Button */}
-                <Pressable style={styles.viewButton}>
-                  <Text style={styles.viewButtonText}>View Details</Text>
-                </Pressable>
-              </View>
-            </Pressable>
-          ))}
-        </View>
+                  <View style={styles.detailsRow}>
+                    <Text style={styles.capacity}>
+                      Capacity / Guest Limit: {venue.max_capacity} Person (Pax)
+                    </Text>
+                  </View>
+
+                  <View style={styles.typeRow}>
+                    <Text style={styles.venueType}>Venue Type: {venue.type_name}</Text>
+                  </View>
+
+                  {/* View Details Button */}
+                  <Pressable 
+                    style={styles.viewButton}
+                    onPress={() =>
+                      router.push({
+                        pathname: "/users/venue_administrator/my_venue/venue_admin_venue_details",
+                        params: { venueId: venue.venue_id },
+                      })
+                    }
+                  >
+                    <Text style={styles.viewButtonText}>View Details</Text>
+                  </Pressable>
+                </View>
+              </Pressable>
+            ))}
+          </View>
+        )}
       </ScrollView>
 
       <BottomNavRenderer role="venue_administrator" activeTab="my_venue" />
@@ -193,6 +299,31 @@ const styles = StyleSheet.create({
     fontFamily: Theme.fonts.regular,
     fontSize: 14,
     color: Theme.colors.text,
+  },
+
+  // Loading & Empty States
+  loadingContainer: {
+    justifyContent: "center",
+    alignItems: "center",
+    paddingVertical: 60,
+  },
+  loadingText: {
+    marginTop: 12,
+    fontFamily: Theme.fonts.regular,
+    fontSize: 14,
+    color: "#999",
+  },
+  emptyContainer: {
+    justifyContent: "center",
+    alignItems: "center",
+    paddingVertical: 60,
+  },
+  emptyText: {
+    marginTop: 12,
+    fontFamily: Theme.fonts.regular,
+    fontSize: 14,
+    color: "#999",
+    textAlign: "center",
   },
 
   // Venue List

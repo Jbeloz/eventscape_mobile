@@ -88,10 +88,25 @@ export default function VenueAdminCalendar() {
           </Pressable>
 
           <View style={styles.actionButtons}>
-            <Pressable onPress={() => setBlockedDatesModalVisible(true)}>
+            <Pressable onPress={() => setBlockedDatesModalVisible(true)} style={styles.actionButton}>
               <Ionicons name="close-circle-outline" size={24} color={Theme.colors.primary} />
             </Pressable>
-            <Pressable onPress={() => router.push("/users/venue_administrator/add_schedule")}>
+            <Pressable 
+              onPress={() => router.push({
+                pathname: "/users/venue_administrator",
+                params: { page: "seasonal_rates" },
+              } as any)}
+              style={styles.actionButton}
+            >
+              <Ionicons name="pricetag-outline" size={24} color={Theme.colors.primary} />
+            </Pressable>
+            <Pressable 
+              onPress={() => router.push({
+                pathname: "/users/venue_administrator",
+                params: { page: "add_schedule" },
+              } as any)}
+              style={styles.actionButton}
+            >
               <Ionicons name="add-circle-outline" size={24} color={Theme.colors.primary} />
             </Pressable>
           </View>
@@ -227,6 +242,10 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     gap: 12,
     marginLeft: "auto",
+    alignItems: "center",
+  },
+  actionButton: {
+    padding: 4,
   },
   eventsSection: {
     marginBottom: 16,

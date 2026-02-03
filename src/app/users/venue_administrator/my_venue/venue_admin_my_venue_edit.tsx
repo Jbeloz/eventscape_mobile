@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import {
   Alert,
@@ -57,8 +57,10 @@ interface OvertimeRate {
   endHour: string;
 }
 
-export default function VenueAdminAddVenue() {
+export default function VenueAdminMyVenueEdit() {
   const router = useRouter();
+  const params = useLocalSearchParams();
+  const venueId = Array.isArray(params.venueId) ? params.venueId[0] : params.venueId;
   const { user } = useAuth();
   const [notificationCount] = useState(0);
   const [currentStep, setCurrentStep] = useState(1);
@@ -66,6 +68,9 @@ export default function VenueAdminAddVenue() {
   const [isSaving, setIsSaving] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [loading, setLoading] = useState(true);
+  const [hasChanges, setHasChanges] = useState(false);
+  const [initialState, setInitialState] = useState<any>(null);
 
   // Step 1: Basic Info
   const [name, setName] = useState("");
@@ -113,6 +118,12 @@ export default function VenueAdminAddVenue() {
   const [packages, setPackages] = useState<PricingPackage[]>([]);
   const [nextPackageId, setNextPackageId] = useState(1);
 
+  // Additional state variables
+  const [location, setLocation] = useState("");
+  const [description, setDescription] = useState("");
+  const [floorPlanImage, setFloorPlanImage] = useState("");
+  const [selectedVenueType, setSelectedVenueType] = useState<number | null>(null);
+
   // Dropdown states
   const [openOvertimeDropdown, setOpenOvertimeDropdown] = useState<number | null>(null);
   const rateTypeOptions = ["Hourly", "Flat Rate", "Per Guest", "Package Rate"];
@@ -127,6 +138,26 @@ export default function VenueAdminAddVenue() {
 
   const steps = ["Basic Info", "Technical Specs", "Media & Rules", "Pricing & Contact"];
 
+  // Detect changes in form fields
+  useEffect(() => {
+    if (!initialState) return; // Don't check until data is loaded
+
+    const currentState = {
+      name, type, streetAddress, barangay, city, province, zipCode, capacity,
+      length, width, ceilingHeight, venueSpecifications,
+      selectedEventTypes, doors, galleryImages, thumbnailImage, rulesAndRegulations,
+      facilities, hourlyRate, minimumHours, weekendRate, holidayRate, pricingNotes,
+      packages, overtimeRates, email, phone, location, description, floorPlanImage
+    };
+
+    const hasAnyChanges = JSON.stringify(currentState) !== JSON.stringify(initialState);
+    setHasChanges(hasAnyChanges);
+  }, [name, type, streetAddress, barangay, city, province, zipCode, capacity,
+      length, width, ceilingHeight, venueSpecifications,
+      selectedEventTypes, doors, galleryImages, thumbnailImage, rulesAndRegulations,
+      facilities, hourlyRate, minimumHours, weekendRate, holidayRate, pricingNotes,
+      packages, overtimeRates, email, phone, location, description, floorPlanImage, initialState]);
+
   // Load initial data
   useEffect(() => {
     if (user?.id) {
@@ -136,6 +167,318 @@ export default function VenueAdminAddVenue() {
     loadVenueTypes();
     loadEventCategories();
   }, [user]);
+
+  // Load existing venue data for editing
+  useEffect(() => {
+    if (venueId) {
+      loadExistingVenueData();
+    }
+  }, [venueId]);
+
+  const loadExistingVenueData = async () => {
+    try {
+      setLoading(true);
+
+      // Fetch all 14 venue-related tables in parallel
+      const [
+        venueData,
+        specData,
+        eventTypesData,
+        baseRatesData,
+        contactsData,
+        facilitiesData,
+        packagesData,
+        doorsData,
+        imagesData,
+        rulesData,
+        floorPlansData,
+        venueTypeData,
+        overtimeRatesData,
+      ] = await Promise.all([
+        supabase
+          .from("venues")
+          .select("*")
+          .eq("venue_id", venueId)
+          .single(),
+        supabase
+          .from("venue_specifications")
+          .select("*")
+          .eq("venue_id", venueId),
+        supabase
+          .from("venue_allowed_event_types")
+          .select("*")
+          .eq("venue_id", venueId),
+        supabase
+          .from("venue_base_rates")
+          .select("*")
+          .eq("venue_id", venueId)
+          .single(),
+        supabase
+          .from("venue_contacts")
+          .select("*")
+          .eq("venue_id", venueId),
+        supabase
+          .from("venue_facilities")
+          .select("*")
+          .eq("venue_id", venueId),
+        supabase
+          .from("venue_packages")
+          .select("*, venue_package_inclusions(*)")
+          .eq("venue_id", venueId),
+        supabase
+          .from("venue_doors")
+          .select("*")
+          .eq("venue_id", venueId),
+        supabase
+          .from("venue_images")
+          .select("*")
+          .eq("venue_id", venueId),
+        supabase
+          .from("venue_rules")
+          .select("*")
+          .eq("venue_id", venueId)
+          .single(),
+        supabase
+          .from("venue_floor_plans")
+          .select("*")
+          .eq("venue_id", venueId)
+          .single(),
+        supabase
+          .from("venue_venue_types")
+          .select("venue_type_id")
+          .eq("venue_id", venueId)
+          .single(),
+        supabase
+          .from("venue_overtime_rates")
+          .select("*")
+          .eq("venue_id", venueId),
+      ]);
+
+      // Populate venue basic info
+      if (venueData.data) {
+        const v = venueData.data;
+        setName(v.venue_name);
+        setDescription(v.description);
+        setLocation(v.location);
+        setStreetAddress(v.street_address);
+        setBarangay(v.barangay);
+        setCity(v.city);
+        setProvince(v.province);
+        setZipCode(v.zip_code);
+        setCapacity(v.max_capacity?.toString() || "");
+      }
+
+      // Populate venue specifications
+      if (specData.data && specData.data.length > 0) {
+        console.log("✅ Venue specs loaded:", specData.data);
+        const specsList = specData.data.map((spec: any, index: number) => ({
+          id: index,
+          name: spec.specification_name,
+          value: spec.specification_value,
+          notes: spec.notes || "",
+        }));
+        setVenueSpecifications(specsList);
+      } else {
+        console.log("⚠️ No venue specs found:", specData);
+      }
+
+      // Populate event types
+      if (eventTypesData.data && eventTypesData.data.length > 0) {
+        console.log("✅ Event types loaded:", eventTypesData.data);
+        const eventIds = eventTypesData.data.map((et: any) => et.category_id);
+        setSelectedEventTypes(eventIds);
+      } else {
+        console.log("⚠️ No event types found:", eventTypesData);
+      }
+
+      // Populate base rates
+      if (baseRatesData.data) {
+        const rates = baseRatesData.data;
+        setHourlyRate(rates.base_price?.toString() || "");
+        setWeekendRate(rates.weekend_price?.toString() || "");
+        setHolidayRate(rates.holiday_price?.toString() || "");
+        setMinimumHours(rates.min_hours?.toString() || "");
+      }
+
+      // Populate contacts
+      if (contactsData.data && contactsData.data.length > 0) {
+        const contacts = contactsData.data;
+        const emailContact = contacts.find((c: any) => c.contact_type === "Email");
+        const phoneContact = contacts.find((c: any) => c.contact_type === "Phone");
+        if (emailContact) {
+          setEmail(emailContact.contact_value || "");
+        }
+        if (phoneContact) {
+          setPhone(phoneContact.contact_value || "");
+        }
+      }
+
+      // Populate facilities
+      if (facilitiesData.data && facilitiesData.data.length > 0) {
+        const facilityList = facilitiesData.data.map((f: any) => f.facility_name);
+        setFacilities(facilityList);
+      }
+
+      // Populate packages
+      if (packagesData.data && packagesData.data.length > 0) {
+        const packageList = packagesData.data.map((pkg: any, index: number) => ({
+          id: index,
+          name: pkg.package_name,
+          description: pkg.description,
+          price: pkg.base_price?.toString() || "0",
+          duration: pkg.min_hours?.toString() || "0",
+          inclusions: pkg.venue_package_inclusions
+            ?.map((inc: any) => inc.inclusion_name)
+            .join(", ") || "",
+        }));
+        setPackages(packageList);
+      }
+
+      // Populate doors
+      if (doorsData.data && doorsData.data.length > 0) {
+        console.log("✅ Doors loaded:", doorsData.data);
+        const doorList = doorsData.data.map((door: any, index: number) => ({
+          id: index,
+          type: door.door_type,
+          width: door.width?.toString() || "",
+          height: door.height?.toString() || "",
+          offsetFromCorner: door.door_offset?.toString() || "",
+          swingDirection: door.swing_direction || "Inward",
+          hingePosition: door.hinge_position || "Left",
+          wall: door.wall || "Top",
+        }));
+        setDoors(doorList);
+      } else {
+        console.log("⚠️ No doors found:", doorsData);
+      }
+
+      // Populate images
+      if (imagesData.data && imagesData.data.length > 0) {
+        const imageList = imagesData.data.map((img: any) => img.image_path);
+        setGalleryImages(imageList);
+      }
+
+      // Populate rules
+      if (rulesData.data) {
+        setRulesAndRegulations(rulesData.data.rule_text || "");
+      }
+
+      // Populate floor plans
+      if (floorPlansData.data) {
+        const fp = floorPlansData.data;
+        setLength(fp.length?.toString() || "");
+        setWidth(fp.width?.toString() || "");
+        setFloorArea(fp.area_sqm?.toString() || "");
+        setCeilingHeight(fp.height?.toString() || "");
+        setFloorPlanImage(fp.floor_plan_image_path || "");
+      }
+
+      // Populate venue type
+      if (venueTypeData.data) {
+        console.log("✅ Venue type data loaded:", venueTypeData.data);
+        setType(venueTypeData.data.venue_type_id.toString());
+      } else if (venueTypeData.error) {
+        console.warn("⚠️ Error loading venue type:", venueTypeData.error);
+      } else {
+        console.warn("⚠️ No venue type data found");
+      }
+
+      // Populate overtime rates
+      if (overtimeRatesData.data && overtimeRatesData.data.length > 0) {
+        const overtimeList = overtimeRatesData.data.map((rate: any, index: number) => ({
+          id: index,
+          rateType: rate.rate_type || "Hourly",
+          pricePerHour: rate.price_per_hour?.toString() || "0",
+          startHour: rate.start_hour?.toString() || "0",
+          endHour: rate.end_hour?.toString() || "0",
+        }));
+        setOvertimeRates(overtimeList);
+      }
+
+      // Store initial state for change detection
+      const specsList = specData.data && specData.data.length > 0 
+        ? specData.data.map((spec: any, index: number) => ({
+            id: index,
+            name: spec.specification_name,
+            value: spec.specification_value,
+            notes: spec.notes || "",
+          }))
+        : [];
+      
+      const eventTypesList = eventTypesData.data && eventTypesData.data.length > 0
+        ? eventTypesData.data.map((et: any) => et.category_id)
+        : [];
+      
+      const doorsList = doorsData.data && doorsData.data.length > 0
+        ? doorsData.data.map((door: any, index: number) => ({
+            id: index,
+            type: door.door_type,
+            width: door.width?.toString() || "",
+            height: door.height?.toString() || "",
+            offsetFromCorner: door.door_offset?.toString() || "",
+            swingDirection: door.swing_direction || "Inward",
+            hingePosition: door.hinge_position || "Left",
+            wall: door.wall || "Top",
+          }))
+        : [];
+      
+      const initialStateSnapshot = {
+        name: venueData.data?.venue_name || "",
+        type: venueTypeData.data?.venue_type_id?.toString() || "",
+        streetAddress: venueData.data?.street_address || "",
+        barangay: venueData.data?.barangay || "",
+        city: venueData.data?.city || "",
+        province: venueData.data?.province || "",
+        zipCode: venueData.data?.zip_code || "",
+        capacity: venueData.data?.max_capacity?.toString() || "",
+        length: floorPlansData.data?.length?.toString() || "",
+        width: floorPlansData.data?.width?.toString() || "",
+        ceilingHeight: floorPlansData.data?.height?.toString() || "",
+        venueSpecifications: specsList,
+        selectedEventTypes: eventTypesList,
+        doors: doorsList,
+        galleryImages: imagesData.data ? imagesData.data.map((img: any) => img.image_path) : [],
+        thumbnailImage: imagesData.data ? imagesData.data.find((img: any) => img.is_thumbnail)?.image_path || "" : "",
+        rulesAndRegulations: rulesData.data?.rule_text || "",
+        facilities: facilitiesData.data ? facilitiesData.data.map((f: any) => f.facility_name) : [],
+        hourlyRate: baseRatesData.data?.base_price?.toString() || "",
+        minimumHours: baseRatesData.data?.min_hours?.toString() || "",
+        weekendRate: baseRatesData.data?.weekend_price?.toString() || "",
+        holidayRate: baseRatesData.data?.holiday_price?.toString() || "",
+        pricingNotes: "",
+        packages: packagesData.data ? packagesData.data.map((pkg: any, index: number) => ({
+          id: index,
+          name: pkg.package_name,
+          description: pkg.description,
+          price: pkg.base_price?.toString() || "0",
+          duration: pkg.min_hours?.toString() || "0",
+          inclusions: pkg.venue_package_inclusions?.map((inc: any) => inc.inclusion_name).join(", ") || "",
+        })) : [],
+        overtimeRates: overtimeRatesData.data && overtimeRatesData.data.length > 0 
+          ? overtimeRatesData.data.map((rate: any, index: number) => ({
+              id: index,
+              rateType: rate.rate_type || "Hourly",
+              pricePerHour: rate.price_per_hour?.toString() || "0",
+              startHour: rate.start_hour?.toString() || "0",
+              endHour: rate.end_hour?.toString() || "0",
+            }))
+          : [],
+        email: contactsData.data ? (contactsData.data.find((c: any) => c.contact_type === "Email")?.contact_value || "") : "",
+        phone: contactsData.data ? (contactsData.data.find((c: any) => c.contact_type === "Phone")?.contact_value || "") : "",
+        location: venueData.data?.location || "",
+        description: venueData.data?.description || "",
+        floorPlanImage: floorPlansData.data?.floor_plan_image_path || "",
+      };
+      setInitialState(initialStateSnapshot);
+      setHasChanges(false);
+
+      setLoading(false);
+    } catch (err) {
+      console.error("Error loading existing venue data:", err);
+      alert("Failed to load venue data");
+      setLoading(false);
+    }
+  };
 
   const fetchUserIdFromDatabase = async (authId: string) => {
     try {
@@ -287,7 +630,7 @@ export default function VenueAdminAddVenue() {
       ...doors,
       {
         id: nextDoorId,
-        type: "Single",
+        type: "Single Door",
         width: "",
         height: "",
         offsetFromCorner: "",
@@ -438,24 +781,6 @@ export default function VenueAdminAddVenue() {
     return getValidationErrors().length === 0;
   };
 
-  const canSaveVenue = (): boolean => {
-    // Only allow save if on the last step AND all fields are valid
-    if (currentStep !== totalSteps) {
-      return false;
-    }
-    
-    // Check if all pricing fields are filled
-    const pricingErrors = [
-      !hourlyRate && "Hourly Rate",
-      !weekendRate && "Weekend Rate",
-      !holidayRate && "Holiday Rate",
-      !email && "Email",
-      !phone && "Phone",
-    ].filter(Boolean);
-    
-    return pricingErrors.length === 0;
-  };
-
   const handleNextStep = () => {
     const errors = getValidationErrors();
     if (errors.length > 0) {
@@ -510,36 +835,9 @@ export default function VenueAdminAddVenue() {
   };
 
   const handleSaveVenue = async () => {
-    // Validate all required fields before saving
-    const missingFields = [
-      !name && "Venue Name",
-      !type && "Venue Type",
-      !streetAddress && "Street Address",
-      !barangay && "Barangay",
-      !city && "City",
-      !province && "Province",
-      !zipCode && "Zip Code",
-      !capacity && "Capacity",
-      selectedEventTypes.length === 0 && "At least one Event Type",
-      !length && "Length",
-      !width && "Width",
-      !ceilingHeight && "Ceiling Height",
-      galleryImages.length === 0 && "At least one Gallery Image",
-      !rulesAndRegulations && "Rules & Regulations",
-      facilities.length === 0 && "At least one Facility",
-      !hourlyRate && "Hourly Rate",
-      !weekendRate && "Weekend Rate",
-      !holidayRate && "Holiday Rate",
-      !email && "Email",
-      !phone && "Phone",
-    ].filter(Boolean);
-
-    if (missingFields.length > 0) {
-      Alert.alert(
-        "Missing Required Fields",
-        "Please fill in the following fields:\n\n" + missingFields.join("\n"),
-        [{ text: "OK" }]
-      );
+    // Check if there are any changes to save
+    if (!hasChanges) {
+      Alert.alert("No Changes", "You haven't made any changes to the venue.");
       return;
     }
 
@@ -548,13 +846,18 @@ export default function VenueAdminAddVenue() {
       return;
     }
 
+    if (!venueId) {
+      Alert.alert("Error", "Venue ID not found. Please go back and try again.");
+      return;
+    }
+
     setIsSaving(true);
 
     try {
-      // Debug: Log what we're sending
-      console.log("Saving venue with userId:", currentUserId, "Type:", typeof currentUserId);
+      // Debug: Log what we're updating
+      console.log("Updating venue with ID:", venueId);
 
-      // Insert main venue record
+      // Update main venue record
       const venueData = {
         venue_name: name,
         description: rulesAndRegulations,
@@ -565,35 +868,34 @@ export default function VenueAdminAddVenue() {
         zip_code: zipCode,
         country: "Philippines",
         max_capacity: parseInt(capacity),
-        created_by: parseInt(currentUserId) || 0,
         is_active: true,
       };
 
-      console.log("Venue data being sent:", venueData);
+      console.log("Venue data being updated:", venueData);
 
       const { data: venueResult, error: venueError } = await supabase
         .from("venues")
-        .insert([venueData])
+        .update(venueData)
+        .eq("venue_id", venueId)
         .select()
         .single();
 
       if (venueError) {
-        console.error("Venue insert error:", venueError);
-        Alert.alert("Error", `Failed to create venue: ${venueError.message}`);
+        console.error("Venue update error:", venueError);
+        Alert.alert("Error", `Failed to update venue: ${venueError.message}`);
         setIsSaving(false);
         return;
       }
 
       if (!venueResult) {
-        Alert.alert("Error", "Failed to create venue");
+        Alert.alert("Error", "Failed to update venue");
         setIsSaving(false);
         return;
       }
 
-      const venueId = venueResult.venue_id;
-      console.log("✅ Venue created with ID:", venueId);
+      console.log("✅ Venue updated with ID:", venueId);
 
-      // Update venue_administrators to assign this venue to the current admin
+      // Ensure venue is assigned to the current admin
       const { error: adminAssignError } = await supabase
         .from("venue_administrators")
         .update({ assigned_venue_id: venueId })
@@ -601,13 +903,17 @@ export default function VenueAdminAddVenue() {
 
       if (adminAssignError) {
         console.warn("⚠️ Warning: Could not assign venue to admin:", adminAssignError);
-        // Continue anyway, the venue is created
+        // Continue anyway, the venue is updated
       } else {
         console.log("✅ Venue assigned to venue administrator");
       }
 
-      // Insert venue specifications
+      // Delete and re-insert venue specifications
       if (venueSpecifications.length > 0) {
+        // First delete existing specifications
+        await supabase.from("venue_specifications").delete().eq("venue_id", venueId);
+
+        // Then insert new ones
         const specsInsert = await supabase.from("venue_specifications").insert(
           venueSpecifications.map((spec) => ({
             venue_id: venueId,
@@ -621,10 +927,17 @@ export default function VenueAdminAddVenue() {
         } else {
           console.log("✅ Specifications inserted");
         }
+      } else {
+        // Delete specifications if none provided
+        await supabase.from("venue_specifications").delete().eq("venue_id", venueId);
       }
 
-      // Insert allowed event types
+      // Delete and re-insert allowed event types
       if (selectedEventTypes.length > 0) {
+        // First delete existing event types
+        await supabase.from("venue_allowed_event_types").delete().eq("venue_id", venueId);
+
+        // Then insert new ones
         const eventTypesInsert = await supabase.from("venue_allowed_event_types").insert(
           selectedEventTypes.map((categoryId) => ({
             venue_id: venueId,
@@ -636,25 +949,25 @@ export default function VenueAdminAddVenue() {
         } else {
           console.log("✅ Event types inserted");
         }
+      } else {
+        // Delete event types if none provided
+        await supabase.from("venue_allowed_event_types").delete().eq("venue_id", venueId);
       }
 
-      // Insert base rate
+      // Update base rate
       if (hourlyRate) {
-        const baseRateInsert = await supabase.from("venue_base_rates").insert([
-          {
-            venue_id: venueId,
-            rate_type: "Hourly",
-            base_price: parseFloat(hourlyRate),
-            weekend_price: parseFloat(weekendRate) || 0,
-            holiday_price: parseFloat(holidayRate) || 0,
-            included_hours: 2,
-            min_hours: parseInt(minimumHours) || 2,
-            notes: pricingNotes || null,
-            is_active: true,
-          },
-        ]);
-        if (baseRateInsert.error) {
-          console.error("Base rate insert error:", baseRateInsert.error);
+        const baseRateUpdate = await supabase.from("venue_base_rates").update({
+          rate_type: "Hourly",
+          base_price: parseFloat(hourlyRate),
+          weekend_price: parseFloat(weekendRate) || 0,
+          holiday_price: parseFloat(holidayRate) || 0,
+          included_hours: 2,
+          min_hours: parseInt(minimumHours) || 2,
+          notes: pricingNotes || null,
+          is_active: true,
+        }).eq("venue_id", venueId);
+        if (baseRateUpdate.error) {
+          console.error("Base rate update error:", baseRateUpdate.error);
         } else {
           console.log("✅ Base rates inserted");
         }
@@ -676,6 +989,9 @@ export default function VenueAdminAddVenue() {
           contact_value: phone,
         });
       }
+      
+      // Delete and re-insert contacts
+      await supabase.from("venue_contacts").delete().eq("venue_id", venueId);
       if (contactsData.length > 0) {
         const contactsInsert = await supabase.from("venue_contacts").insert(contactsData);
         if (contactsInsert.error) {
@@ -685,8 +1001,11 @@ export default function VenueAdminAddVenue() {
         }
       }
 
-      // Insert facilities
+      // Delete and re-insert facilities
       if (facilities.length > 0) {
+        // Delete existing facilities
+        await supabase.from("venue_facilities").delete().eq("venue_id", venueId);
+
         const facilitiesInsert = await supabase.from("venue_facilities").insert(
           facilities.map((facility) => ({
             venue_id: venueId,
@@ -699,10 +1018,16 @@ export default function VenueAdminAddVenue() {
         } else {
           console.log("✅ Facilities inserted");
         }
+      } else {
+        // Delete facilities if none provided
+        await supabase.from("venue_facilities").delete().eq("venue_id", venueId);
       }
 
-      // Insert packages
+      // Delete and re-insert packages
       if (packages.length > 0) {
+        // First delete existing packages and their inclusions
+        await supabase.from("venue_packages").delete().eq("venue_id", venueId);
+
         const { data: packageResults, error: packageError } = await supabase
           .from("venue_packages")
           .insert(
@@ -754,69 +1079,94 @@ export default function VenueAdminAddVenue() {
             }
           }
         }
+      } else {
+        // Delete packages if none provided
+        await supabase.from("venue_packages").delete().eq("venue_id", venueId);
       }
 
-      // Insert rules
+      // Update rules
       if (rulesAndRegulations) {
-        const rulesInsert = await supabase.from("venue_rules").insert([
-          {
-            venue_id: venueId,
-            rule_text: rulesAndRegulations,
-            is_active: true,
-          },
-        ]);
-        if (rulesInsert.error) {
-          console.error("Rules insert error:", rulesInsert.error);
+        const rulesUpdate = await supabase.from("venue_rules").update({
+          rule_text: rulesAndRegulations,
+          is_active: true,
+        }).eq("venue_id", venueId);
+        if (rulesUpdate.error) {
+          console.error("Rules update error:", rulesUpdate.error);
         } else {
-          console.log("✅ Rules inserted");
+          console.log("✅ Rules updated");
         }
       }
 
-      // Insert floor plan
+      // Update floor plan
       if (length && width) {
-        const floorPlanInsert = await supabase.from("venue_floor_plans").insert([
-          {
-            venue_id: venueId,
-            floor_plan_file: "floor_plan_default.svg",
-            floor_plan_type: "dimensions",
-            length: parseFloat(length),
-            width: parseFloat(width),
-            height: parseFloat(ceilingHeight) || 0,
-            area_sqm: parseFloat(floorArea),
-          },
-        ]);
-        if (floorPlanInsert.error) {
-          console.error("Floor plan insert error:", floorPlanInsert.error);
+        const floorPlanUpdate = await supabase.from("venue_floor_plans").update({
+          floor_plan_file: "floor_plan_default.svg",
+          floor_plan_type: "dimensions",
+          length: parseFloat(length),
+          width: parseFloat(width),
+          height: parseFloat(ceilingHeight) || 0,
+          area_sqm: parseFloat(floorArea),
+        }).eq("venue_id", venueId);
+        if (floorPlanUpdate.error) {
+          console.error("Floor plan update error:", floorPlanUpdate.error);
         } else {
-          console.log("✅ Floor plan inserted");
+          console.log("✅ Floor plan updated");
         }
       } else {
         console.log("⏭️  Floor plan skipped (no dimensions provided)");
       }
 
-      // Insert doors
+      // Delete and re-insert doors
       if (doors.length > 0) {
+        // First delete existing doors
+        await supabase.from("venue_doors").delete().eq("venue_id", venueId);
+
         const doorsInsert = await supabase.from("venue_doors").insert(
           doors.map((door) => {
             // Map display names to enum values
             const doorTypeMap: { [key: string]: string } = {
               'Single Door': 'Single',
               'Double Door': 'Double',
+              'Sliding Door': 'Sliding',
+              'Pocket Door': 'Pocket',
               'Single': 'Single',
               'Double': 'Double',
+              'Sliding': 'Sliding',
+              'Pocket': 'Pocket',
             };
             const mappedDoorType = doorTypeMap[door.type] || door.type;
+            
+            const swingMap: { [key: string]: string } = {
+              'Inward': 'Inward',
+              'Outward': 'Outward',
+            };
+            const mappedSwing = swingMap[door.swingDirection] || 'Inward';
+            
+            const hingeMap: { [key: string]: string } = {
+              'Left': 'Left',
+              'Right': 'Right',
+              'Center': 'Center',
+            };
+            const mappedHinge = hingeMap[door.hingePosition] || 'Left';
+            
+            const wallMap: { [key: string]: string } = {
+              'Top': 'Top',
+              'Bottom': 'Bottom',
+              'Left': 'Left',
+              'Right': 'Right',
+            };
+            const mappedWall = wallMap[door.wall] || 'Top';
             
             return {
               venue_id: venueId,
               door_type: mappedDoorType,
-              width: parseFloat(door.width) || 0,
-              height: parseFloat(door.height) || 0,
               door_offset: parseFloat(door.offsetFromCorner) || 0,
-              wall: door.wall,
-              corner_position: door.hingePosition,
-              swing_direction: door.swingDirection,
-              hinge_position: door.hingePosition,
+              hinge_position: mappedHinge,
+              width: parseFloat(door.width) || 1,
+              height: parseFloat(door.height) || 2.1,
+              wall: mappedWall,
+              corner_position: 'Center',
+              swing_direction: mappedSwing,
             };
           })
         );
@@ -846,11 +1196,17 @@ export default function VenueAdminAddVenue() {
         } else {
           console.log("✅ Overtime rates inserted");
         }
+      } else {
+        // Delete overtime rates if none provided
+        await supabase.from("venue_overtime_rates").delete().eq("venue_id", venueId);
       }
 
-      // Insert gallery images
+      // Delete and re-insert gallery images
       if (galleryImages.length > 0) {
         console.log("📤 Starting gallery image uploads to Cloudinary...");
+        
+        // First delete existing images
+        await supabase.from("venue_images").delete().eq("venue_id", venueId);
         
         // Upload all gallery images to Cloudinary first
         const uploadedImageUrls: string[] = [];
@@ -888,26 +1244,28 @@ export default function VenueAdminAddVenue() {
         } else {
           console.log("✅ Images inserted");
         }
+      } else {
+        // Delete images if none provided
+        await supabase.from("venue_images").delete().eq("venue_id", venueId);
       }
 
-      // Insert venue type link (venue_venue_types)
+      // Update venue type link (venue_venue_types)
       if (type) {
-        const venueTypeLink = {
-          venue_id: venueId,
-          venue_type_id: parseInt(type),
-        };
         const { error: venueTypeLinkError } = await supabase
           .from("venue_venue_types")
-          .insert([venueTypeLink]);
+          .update({
+            venue_type_id: parseInt(type),
+          })
+          .eq("venue_id", venueId);
         if (venueTypeLinkError) {
           console.error("Venue type link error:", venueTypeLinkError);
         } else {
-          console.log("✅ Venue type link inserted");
+          console.log("✅ Venue type link updated");
         }
       }
 
       setIsSaving(false);
-      Alert.alert("Success", "Venue created successfully!", [
+      Alert.alert("Success", "Venue updated successfully!", [
         {
           text: "OK",
           onPress: () => router.back(),
@@ -915,7 +1273,7 @@ export default function VenueAdminAddVenue() {
       ]);
     } catch (err: any) {
       setIsSaving(false);
-      Alert.alert("Error", err.message || "Failed to create venue");
+      Alert.alert("Error", err.message || "Failed to update venue");
     }
   };
 
@@ -1176,7 +1534,7 @@ export default function VenueAdminAddVenue() {
 
       {/* Floor Plan Visualization */}
       {length && width && !isNaN(parseFloat(length)) && !isNaN(parseFloat(width)) && (
-        <VenueFloorPlanVisualizer length={length} width={width} doors={doors} />
+        <VenueFloorPlanVisualizer length={length} width={width} doors={[]} />
       )}
 
       {/* Doors */}
@@ -1274,15 +1632,34 @@ export default function VenueAdminAddVenue() {
             </View>
 
             {/* Hinge Position */}
-            <View style={styles.row1}>
-              <View style={styles.flex1}>
-                <DoorDropdown
-                  label="Hinge"
-                  value={door.hingePosition}
-                  options={["Left", "Right", "Center"]}
-                  onSelect={(value) => updateDoor(door.id, "hingePosition", value)}
-                />
-              </View>
+            <View style={styles.fieldGroup}>
+              <Text style={styles.smallLabel}>Hinge</Text>
+              <Pressable
+                style={styles.miniDropdown}
+                onPress={() => setOpenDoorWallDropdown(openDoorWallDropdown === door.id + 1000 ? null : door.id + 1000)}
+              >
+                <Text style={styles.miniDropdownText}>{door.hingePosition}</Text>
+                <Ionicons name="chevron-down" size={16} color="#666" />
+              </Pressable>
+              {openDoorWallDropdown === door.id + 1000 && (
+                <View style={styles.dropdownMenu}>
+                  {["Left", "Right", "Center"].map((option) => (
+                    <Pressable
+                      key={option}
+                      style={styles.dropdownItem}
+                      onPress={() => {
+                        updateDoor(door.id, "hingePosition", option);
+                        setOpenDoorWallDropdown(null);
+                      }}
+                    >
+                      <Text style={styles.dropdownItemText}>{option}</Text>
+                      {door.hingePosition === option && (
+                        <Ionicons name="checkmark" size={16} color="#007AFF" />
+                      )}
+                    </Pressable>
+                  ))}
+                </View>
+              )}
             </View>
 
             <Pressable
@@ -1682,7 +2059,7 @@ export default function VenueAdminAddVenue() {
       <TopBar notificationCount={notificationCount} />
 
       {/* Header with Back and Save Buttons */}
-      <View style={styles.addHeader}>
+      <View style={styles.editHeader}>
         <Pressable 
           style={styles.headerBackButton}
           onPress={() => router.back()}
@@ -1691,20 +2068,20 @@ export default function VenueAdminAddVenue() {
           <Text style={styles.headerButtonText}>Back</Text>
         </Pressable>
         
-        <Text style={styles.addHeaderTitle}>Add Venue</Text>
+        <Text style={styles.editHeaderTitle}>Edit Venue</Text>
         
         <Pressable 
           style={[
             styles.headerSaveButton,
-            !canSaveVenue() && styles.headerSaveButtonDisabled
+            (!hasChanges || isSaving) && styles.headerSaveButtonDisabled
           ]}
           onPress={handleSaveVenue}
-          disabled={!canSaveVenue()}
+          disabled={!hasChanges || isSaving}
         >
-          <Ionicons name="checkmark" size={24} color={!canSaveVenue() ? "#CCC" : "#FFF"} />
+          <Ionicons name="checkmark" size={24} color={!hasChanges || isSaving ? "#CCC" : "#FFF"} />
           <Text style={[
             styles.headerButtonText,
-            { color: !canSaveVenue() ? "#CCC" : "#FFF" }
+            { color: !hasChanges || isSaving ? "#CCC" : "#FFF" }
           ]}>
             {isSaving ? "Saving..." : "Save"}
           </Text>
@@ -1715,10 +2092,14 @@ export default function VenueAdminAddVenue() {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
       >
-        {/* Stepper */}
+        {/* Stepper - Clickable in Edit Mode */}
         <View style={styles.stepper}>
           {steps.map((step, index) => (
-            <View key={index} style={styles.stepperItem}>
+            <Pressable
+              key={index}
+              style={styles.stepperItem}
+              onPress={() => setCurrentStep(index + 1)}
+            >
               <View
                 style={[
                   styles.stepperDot,
@@ -1735,7 +2116,7 @@ export default function VenueAdminAddVenue() {
                 </Text>
               </View>
               <Text style={styles.stepperLabel}>{step}</Text>
-            </View>
+            </Pressable>
           ))}
         </View>
 
@@ -1792,7 +2173,7 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: Theme.colors.background,
   },
-  addHeader: {
+  editHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
@@ -1826,7 +2207,7 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: Theme.colors.primary,
   },
-  addHeaderTitle: {
+  editHeaderTitle: {
     fontFamily: Theme.fonts.bold,
     fontSize: 16,
     color: Theme.colors.text,
