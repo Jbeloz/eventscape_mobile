@@ -1,6 +1,8 @@
 import { useLocalSearchParams } from "expo-router";
 import { useEffect, useRef } from "react";
 import { Animated } from "react-native";
+import VenueDashboard from "../../../components/VenueDashboard";
+import { useAuth } from "../../../hooks/use-auth";
 import AddSchedule from "./add_schedule";
 import VenueAdminAddVenue from "./my_venue/venue_admin_add_venue";
 import VenueAdminMyVenue from "./my_venue/venue_admin_my_venue";
@@ -10,10 +12,11 @@ import VenueAdminHome from "./venue_admin_home";
 import VenueAdminProfile from "./venue_admin_profile";
 import VenueAdminVenues from "./venue_admin_venues";
 
-type PageType = "home" | "venues" | "calendar" | "profile" | "add_venue" | "my_venue" | "seasonal_rates" | "add_schedule";
+type PageType = "home" | "venues" | "calendar" | "profile" | "add_venue" | "my_venue" | "seasonal_rates" | "add_schedule" | "venue_dashboard";
 
 export default function VenueAdministratorIndex() {
   const params = useLocalSearchParams();
+  const { user } = useAuth();
   const fadeAnim = useRef(new Animated.Value(1)).current;
   
   // Get the page from params or default to home
@@ -51,6 +54,9 @@ export default function VenueAdministratorIndex() {
         return <VenueAdminAddVenue />;
       case "my_venue":
         return <VenueAdminMyVenue />;
+      case "venue_dashboard":
+        // Use a default venueId (1) - in production, you'd select from user's venues
+        return <VenueDashboard venueId={1} />;
       case "home":
       default:
         return <VenueAdminHome />;

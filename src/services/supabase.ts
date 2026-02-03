@@ -298,3 +298,215 @@ export async function updateVenueDirectBooking(
     return { data: null, error }
   }
 }
+
+/**
+ * Create a venue blocked date
+ */
+export async function createVenueBlockedDate(blockedDateData: {
+  venue_id: number
+  start_date: string
+  end_date: string
+  reason: string
+  blocked_by: number
+}) {
+  try {
+    const { data, error } = await supabase
+      .from('venue_blocked_dates')
+      .insert([blockedDateData])
+      .select()
+
+    if (error) {
+      console.error('Error creating venue blocked date:', error)
+      return { data: null, error }
+    }
+
+    return { data, error: null }
+  } catch (error) {
+    console.error('Error in createVenueBlockedDate:', error)
+    return { data: null, error }
+  }
+}
+
+/**
+ * Get venue blocked dates
+ */
+export async function getVenueBlockedDates(venueId: number) {
+  try {
+    const { data, error } = await supabase
+      .from('venue_blocked_dates')
+      .select('*')
+      .eq('venue_id', venueId)
+      .order('start_date', { ascending: true })
+
+    if (error) {
+      console.error('Error fetching venue blocked dates:', error)
+      return { data: null, error }
+    }
+
+    return { data, error: null }
+  } catch (error) {
+    console.error('Error in getVenueBlockedDates:', error)
+    return { data: null, error }
+  }
+}
+
+/**
+ * Delete a venue blocked date
+ */
+export async function deleteVenueBlockedDate(blockedId: number) {
+  try {
+    const { data, error } = await supabase
+      .from('venue_blocked_dates')
+      .delete()
+      .eq('blocked_id', blockedId)
+      .select()
+
+    if (error) {
+      console.error('Error deleting venue blocked date:', error)
+      return { data: null, error }
+    }
+
+    return { data, error: null }
+  } catch (error) {
+    console.error('Error in deleteVenueBlockedDate:', error)
+    return { data: null, error }
+  }
+}
+
+/**
+ * Get pending bookings for a venue
+ * Joins with coordinators and users to get client details
+ */
+export async function getPendingVenueBookings(venueId: number) {
+  try {
+    const { data, error } = await supabase
+      .from('bookings')
+      .select(`
+        booking_id,
+        event_date,
+        time_start,
+        time_end,
+        booking_status,
+        guest_capacity,
+        notes,
+        coordinator_id,
+        coordinators (
+          coordinator_id,
+          user_id,
+          users (
+            first_name,
+            last_name
+          )
+        )
+      `)
+      .eq('venue_id', venueId)
+      .eq('booking_status', 'pending')
+      .order('event_date', { ascending: true })
+
+    if (error) {
+      console.error('Error fetching pending venue bookings:', error)
+      return { data: null, error }
+    }
+
+    // Transform data to flatten structure
+    const transformedData = data?.map((booking: any) => ({
+      booking_id: booking.booking_id,
+      client_name: booking.coordinators?.users 
+        ? `${booking.coordinators.users.first_name} ${booking.coordinators.users.last_name}`
+        : 'Unknown Client',
+      event_date: booking.event_date,
+      time_start: booking.time_start,
+      time_end: booking.time_end,
+      booking_status: booking.booking_status,
+      guest_capacity: booking.guest_capacity,
+      notes: booking.notes,
+      coordinator_name: booking.coordinators?.users
+        ? `${booking.coordinators.users.first_name} ${booking.coordinators.users.last_name}`
+        : 'Unknown',
+    })) || []
+
+    return { data: transformedData, error: null }
+  } catch (error) {
+    console.error('Error in getPendingVenueBookings:', error)
+    return { data: null, error }
+  }
+}
+
+/**
+ * Get confirmed bookings for a venue
+ */
+export async function getConfirmedVenueBookings(venueId: number) {
+  try {
+    const { data, error } = await supabase
+      .from('bookings')
+      .select(`
+        booking_id,
+        event_date,
+        time_start,
+        time_end,
+        booking_status,
+        guest_capacity,
+        coordinator_id,
+        coordinators (
+          coordinator_id,
+          user_id,
+          users (
+            first_name,
+            last_name
+          )
+        )
+      `)
+      .eq('venue_id', venueId)
+      .in('booking_status', ['confirmed', 'rescheduled'])
+      .order('event_date', { ascending: true })
+
+    if (error) {
+      console.error('Error fetching confirmed venue bookings:', error)
+      return { data: null, error }
+    }
+
+    // Transform data to flatten structure
+    const transformedData = data?.map((booking: any) => ({
+      booking_id: booking.booking_id,
+      client_name: booking.coordinators?.users 
+        ? `${booking.coordinators.users.first_name} ${booking.coordinators.users.last_name}`
+        : 'Unknown Client',
+      event_date: booking.event_date,
+      time_start: booking.time_start,
+      time_end: booking.time_end,
+      booking_status: booking.booking_status,
+      guest_capacity: booking.guest_capacity,
+    })) || []
+
+    return { data: transformedData, error: null }
+  } catch (error) {
+    console.error('Error in getConfirmedVenueBookings:', error)
+    return { data: null, error }
+  }
+}
+
+/**
+ * Update booking status
+ */
+export async function updateBookingStatus(
+  bookingId: number,
+  status: 'confirmed' | 'rejected' | 'cancelled' | 'pending'
+) {
+  try {
+    const { data, error } = await supabase
+      .from('bookings')
+      .update({ booking_status: status })
+      .eq('booking_id', bookingId)
+      .select()
+
+    if (error) {
+      console.error('Error updating booking status:', error)
+      return { data: null, error }
+    }
+
+    return { data, error: null }
+  } catch (error) {
+    console.error('Error in updateBookingStatus:', error)
+    return { data: null, error }
+  }
+}

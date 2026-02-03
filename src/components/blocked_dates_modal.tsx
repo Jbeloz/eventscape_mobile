@@ -23,7 +23,6 @@ export interface BlockedDateData {
   endMonth: string;
   endDay: string;
   endYear: string;
-  description: string;
   reason: string;
 }
 
@@ -53,7 +52,6 @@ export default function BlockedDatesModal({
   const [endMonth, setEndMonth] = useState("January");
   const [endDay, setEndDay] = useState("05");
   const [endYear, setEndYear] = useState("2025");
-  const [description, setDescription] = useState("");
   const [reason, setReason] = useState("");
 
   const handleBlockedDates = () => {
@@ -64,7 +62,6 @@ export default function BlockedDatesModal({
       endMonth,
       endDay,
       endYear,
-      description,
       reason,
     });
     resetForm();
@@ -77,7 +74,6 @@ export default function BlockedDatesModal({
     setEndMonth("January");
     setEndDay("05");
     setEndYear("2025");
-    setDescription("");
     setReason("");
   };
 
@@ -164,20 +160,6 @@ export default function BlockedDatesModal({
                   />
                 </Pressable>
               </View>
-            </View>
-
-            {/* Description */}
-            <View style={styles.section}>
-              <Text style={styles.label}>Description / Remarks</Text>
-              <TextInput
-                style={styles.textarea}
-                placeholder="Enter description..."
-                placeholderTextColor={Theme.colors.muted}
-                value={description}
-                onChangeText={setDescription}
-                multiline
-                numberOfLines={4}
-              />
             </View>
 
             {/* Reason */}
