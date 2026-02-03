@@ -1,8 +1,9 @@
 import { useLocalSearchParams } from "expo-router";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Animated } from "react-native";
 import VenueDashboard from "../../../components/VenueDashboard";
 import { useAuth } from "../../../hooks/use-auth";
+import { supabase } from "../../../services/supabase";
 import AddSchedule from "./add_schedule";
 import VenueAdminAddVenue from "./my_venue/venue_admin_add_venue";
 import VenueAdminMyVenue from "./my_venue/venue_admin_my_venue";
@@ -18,9 +19,34 @@ export default function VenueAdministratorIndex() {
   const params = useLocalSearchParams();
   const { user } = useAuth();
   const fadeAnim = useRef(new Animated.Value(1)).current;
+  const [firstVenueId, setFirstVenueId] = useState<number | null>(null);
   
   // Get the page from params or default to home
   const currentPage = (params.page as PageType) || "home";
+
+  // Load user's first venue on mount
+  useEffect(() => {
+    if (user?.id) {
+      loadFirstVenue(user.id);
+    }
+  }, [user]);
+
+  const loadFirstVenue = async (authId: string) => {
+    try {
+      // Get first venue from ALL venues (everyone can see all venues)
+      const { data: venuesData } = await supabase
+        .from("venues")
+        .select("venue_id")
+        .order("created_at", { ascending: false })
+        .limit(1);
+
+      if (venuesData && venuesData.length > 0) {
+        setFirstVenueId(venuesData[0].venue_id);
+      }
+    } catch (err) {
+      console.error("Error loading first venue:", err);
+    }
+  };
 
   useEffect(() => {
     // Fade out and in when page changes
@@ -55,8 +81,11 @@ export default function VenueAdministratorIndex() {
       case "my_venue":
         return <VenueAdminMyVenue />;
       case "venue_dashboard":
-        // Use a default venueId (1) - in production, you'd select from user's venues
-        return <VenueDashboard venueId={1} />;
+        // Get venueId from params, or use user's first venue, or default to 1
+        const venueId = params.venueId 
+          ? parseInt(params.venueId as string, 10) 
+          : (firstVenueId || 1);
+        return <VenueDashboard venueId={venueId} />;
       case "home":
       default:
         return <VenueAdminHome />;

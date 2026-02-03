@@ -3,11 +3,10 @@ import { useState } from "react";
 import {
   FlatList,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
-  View,
+  View
 } from "react-native";
 import { Theme } from "../../../../constants/theme";
 

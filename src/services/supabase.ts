@@ -67,6 +67,30 @@ if (Platform.OS !== 'web') {
   })
 }
 
+// ===== VENUE SERVICE FUNCTIONS =====
+
+/**
+ * Get all venues
+ */
+export async function getVenues() {
+  try {
+    const { data, error } = await supabase
+      .from('venues')
+      .select('venue_id, venue_name')
+      .order('created_at', { ascending: false })
+
+    if (error) {
+      console.error('Error fetching venues:', error)
+      return { data: null, error }
+    }
+
+    return { data: data || [], error: null }
+  } catch (error) {
+    console.error('Error in getVenues:', error)
+    return { data: null, error }
+  }
+}
+
 // ===== SEASONAL PRICING SERVICE FUNCTIONS =====
 
 /**
@@ -328,6 +352,50 @@ export async function createVenueBlockedDate(blockedDateData: {
 }
 
 /**
+ * Create a system-wide blocked date (affects all venues)
+ */
+export async function createSystemBlockedDate(blockedDateData: {
+  start_date: string
+  end_date: string
+  reason: string
+  blocked_by: number
+}) {
+  try {
+    // First, get all venues
+    const { data: venues, error: venuesError } = await getVenues()
+    
+    if (venuesError || !venues) {
+      console.error('Error fetching venues:', venuesError)
+      return { data: null, error: venuesError }
+    }
+
+    // Create blocked date for each venue
+    const blockedDatesForAllVenues = venues.map((venue: any) => ({
+      venue_id: venue.venue_id,
+      start_date: blockedDateData.start_date,
+      end_date: blockedDateData.end_date,
+      reason: blockedDateData.reason,
+      blocked_by: blockedDateData.blocked_by,
+    }))
+
+    const { data, error } = await supabase
+      .from('venue_blocked_dates')
+      .insert(blockedDatesForAllVenues)
+      .select()
+
+    if (error) {
+      console.error('Error creating system-wide blocked dates:', error)
+      return { data: null, error }
+    }
+
+    return { data, error: null }
+  } catch (error) {
+    console.error('Error in createSystemBlockedDate:', error)
+    return { data: null, error }
+  }
+}
+
+/**
  * Get venue blocked dates
  */
 export async function getVenueBlockedDates(venueId: number) {
@@ -507,6 +575,275 @@ export async function updateBookingStatus(
     return { data, error: null }
   } catch (error) {
     console.error('Error in updateBookingStatus:', error)
+    return { data: null, error }
+  }
+}
+
+/**
+ * Get venue base rates
+ */
+export async function getVenueBaseRates(venueId: number) {
+  try {
+    const { data, error } = await supabase
+      .from('venue_base_rates')
+      .select('*')
+      .eq('venue_id', venueId)
+      .order('created_at', { ascending: false })
+
+    if (error) {
+      console.error('Error fetching venue base rates:', error)
+      return { data: null, error }
+    }
+
+    return { data, error: null }
+  } catch (error) {
+    console.error('Error in getVenueBaseRates:', error)
+    return { data: null, error }
+  }
+}
+
+/**
+ * Create a booking pricing record (locks in the calculated price)
+ */
+export async function createBookingPricing(pricingData: {
+  booking_id: number
+  base_price: number
+  seasonal_adjustment: number
+  seasonal_pricing_id?: number | null
+  final_price: number
+  currency: string
+}) {
+  try {
+    const { data, error } = await supabase
+      .from('booking_pricing')
+      .insert([pricingData])
+      .select()
+
+    if (error) {
+      console.error('Error creating booking pricing:', error)
+      return { data: null, error }
+    }
+
+    return { data: data?.[0], error: null }
+  } catch (error) {
+    console.error('Error in createBookingPricing:', error)
+    return { data: null, error }
+  }
+}
+
+/**
+ * Update booking pricing record
+ */
+export async function updateBookingPricing(
+  bookingId: number,
+  updates: {
+    base_price?: number
+    seasonal_adjustment?: number
+    seasonal_pricing_id?: number | null
+    final_price?: number
+  }
+) {
+  try {
+    const { data, error } = await supabase
+      .from('booking_pricing')
+      .update({ ...updates, updated_at: new Date().toISOString() })
+      .eq('booking_id', bookingId)
+      .select()
+
+    if (error) {
+      console.error('Error updating booking pricing:', error)
+      return { data: null, error }
+    }
+
+    return { data: data?.[0], error: null }
+  } catch (error) {
+    console.error('Error in updateBookingPricing:', error)
+    return { data: null, error }
+  }
+}
+
+/**
+ * Get booking pricing record
+ */
+export async function getBookingPricing(bookingId: number) {
+  try {
+    const { data, error } = await supabase
+      .from('booking_pricing')
+      .select('*')
+      .eq('booking_id', bookingId)
+      .single()
+
+    if (error && error.code !== 'PGRST116') { // PGRST116 = no rows found
+      console.error('Error fetching booking pricing:', error)
+      return { data: null, error }
+    }
+
+    return { data, error: null }
+  } catch (error) {
+    console.error('Error in getBookingPricing:', error)
+    return { data: null, error }
+  }
+}
+
+// ===== UNIFIED CALENDAR FETCHER =====
+
+/**
+ * Unified Calendar Event Interface
+ */
+export interface UnifiedCalendarEvent {
+  id: string | number
+  title: string
+  event_date: string
+  time_start?: string
+  time_end?: string
+  type: 'internal' | 'external' | 'blocked'
+  color: string
+  guest_capacity?: number
+  client_name?: string
+  status?: string
+  reason?: string
+}
+
+/**
+ * Fetch all calendar events (blocked dates, confirmed coordinator bookings, confirmed direct bookings)
+ * and merge them into a single unified array.
+ * 
+ * @param venueId - The venue ID to fetch events for
+ * @returns Array of unified calendar events
+ */
+export async function getUnifiedCalendarEvents(venueId: number) {
+  try {
+    const unifiedEvents: UnifiedCalendarEvent[] = []
+
+    // Fetch 1: Confirmed External Bookings (from coordinators)
+    const { data: confirmedBookings, error: bookingsError } = await supabase
+      .from('bookings')
+      .select(`
+        booking_id,
+        event_date,
+        time_start,
+        time_end,
+        booking_status,
+        guest_capacity,
+        coordinator_id,
+        coordinators (
+          coordinator_id,
+          user_id,
+          users (
+            first_name,
+            last_name
+          )
+        )
+      `)
+      .eq('venue_id', venueId)
+      .in('booking_status', ['confirmed', 'rescheduled'])
+      .order('event_date', { ascending: true })
+
+    if (bookingsError) {
+      console.error('❌ Error fetching confirmed bookings:', bookingsError)
+    } else if (confirmedBookings && confirmedBookings.length > 0) {
+      console.log(`✅ Fetched ${confirmedBookings.length} confirmed external bookings`)
+      confirmedBookings.forEach((booking: any) => {
+        const clientName = booking.coordinators?.users 
+          ? `${booking.coordinators.users.first_name} ${booking.coordinators.users.last_name}`
+          : 'Unknown Client'
+        
+        unifiedEvents.push({
+          id: `external_${booking.booking_id}`,
+          title: `👥 ${clientName} (Coordinator)`,
+          event_date: booking.event_date,
+          time_start: booking.time_start,
+          time_end: booking.time_end,
+          type: 'external',
+          color: '#4CAF50', // Green for external
+          guest_capacity: booking.guest_capacity,
+          client_name: clientName,
+          status: booking.booking_status,
+        })
+      })
+    }
+
+    // Fetch 2: Confirmed Direct Internal Bookings
+    console.log(`🔍 Querying venue_direct_bookings for venue_id=${venueId} with status='confirmed'`)
+    const { data: directBookings, error: directError } = await supabase
+      .from('venue_direct_bookings')
+      .select('*')
+      .eq('venue_id', venueId)
+      .eq('status', 'confirmed')
+      .order('event_date', { ascending: true })
+
+    if (directError) {
+      console.error('❌ Error fetching direct bookings:', directError)
+      console.error('   Error details:', JSON.stringify(directError))
+    } else {
+      console.log(`✅ Direct bookings query returned ${directBookings?.length || 0} records`)
+      if (directBookings && directBookings.length > 0) {
+        console.log(`✅ Processing ${directBookings.length} confirmed internal bookings`)
+        directBookings.forEach((booking: any) => {
+          console.log(`   > Adding internal booking: ID=${booking.direct_booking_id}, status=${booking.status}, date=${booking.event_date}`)
+          unifiedEvents.push({
+            id: `internal_${booking.direct_booking_id}`,
+            title: `📌 ${booking.event_name} (${booking.client_name})`,
+            event_date: booking.event_date,
+            time_start: booking.time_start,
+            time_end: booking.time_end,
+            type: 'internal',
+            color: '#2196F3', // Blue for internal
+            guest_capacity: booking.guest_capacity,
+            client_name: booking.client_name,
+            status: booking.status,
+          })
+        })
+      } else {
+        console.log('⚠️  No confirmed internal bookings found for this venue')
+      }
+    }
+
+    // Fetch 3: Blocked Dates
+    const { data: blockedDates, error: blockedError } = await supabase
+      .from('venue_blocked_dates')
+      .select('*')
+      .eq('venue_id', venueId)
+      .order('start_date', { ascending: true })
+
+    if (blockedError) {
+      console.error('❌ Error fetching blocked dates:', blockedError)
+    } else if (blockedDates && blockedDates.length > 0) {
+      console.log(`✅ Fetched ${blockedDates.length} blocked date ranges`)
+      blockedDates.forEach((blocked: any) => {
+        unifiedEvents.push({
+          id: `blocked_${blocked.blocked_id}`,
+          title: `🚫 Blocked: ${blocked.reason || 'Maintenance'}`,
+          event_date: blocked.start_date,
+          type: 'blocked',
+          color: '#F44336', // Red for blocked
+          reason: blocked.reason,
+        })
+      })
+    }
+
+    // Sort all events by date and time
+    unifiedEvents.sort((a, b) => {
+      const dateA = new Date(`${a.event_date}T${a.time_start || '00:00:00'}`)
+      const dateB = new Date(`${b.event_date}T${b.time_start || '00:00:00'}`)
+      return dateA.getTime() - dateB.getTime()
+    })
+
+    console.log(`\n📅 ===== UNIFIED CALENDAR SUMMARY =====`)
+    console.log(`📅 Total unified calendar events: ${unifiedEvents.length}`)
+    console.log(`📅 Breakdown:`)
+    const internalCount = unifiedEvents.filter(e => e.type === 'internal').length
+    const externalCount = unifiedEvents.filter(e => e.type === 'external').length
+    const blockedCount = unifiedEvents.filter(e => e.type === 'blocked').length
+    console.log(`   - Internal: ${internalCount}`)
+    console.log(`   - External: ${externalCount}`)
+    console.log(`   - Blocked: ${blockedCount}`)
+    console.log(`📅 Events to return: ${JSON.stringify(unifiedEvents.slice(0, 3))}${unifiedEvents.length > 3 ? '... [+' + (unifiedEvents.length - 3) + ' more]' : ''}`)
+    console.log(`📅 =====================================\n`)
+    
+    return { data: unifiedEvents, error: null }
+  } catch (error) {
+    console.error('❌ Error in getUnifiedCalendarEvents:', error)
     return { data: null, error }
   }
 }

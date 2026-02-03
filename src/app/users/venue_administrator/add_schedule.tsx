@@ -2,6 +2,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import {
+    ActivityIndicator,
     Alert,
     FlatList,
     Modal,
@@ -17,144 +18,180 @@ import { Theme } from "../../../../constants/theme";
 import DatePickerModal from "../../../components/DatePickerModal";
 import TimePickerModal from "../../../components/TimePickerModal";
 import TopBar from "../../../components/top_bar";
-import { VenueSeasonalPricing } from "../../../models/types";
-import {
-    createVenueDirectBooking,
-    getActiveVenueSeasonalPricing
-} from "../../../services/supabase";
-import {
-    calculateSeasonalPrice,
-    findApplicableSeasons
-} from "../../../utils/seasonalPricingUtils";
+import { useAuth } from "../../../hooks/use-auth";
+import { createVenueDirectBooking, supabase } from "../../../services/supabase";
 
-const PACKAGE_OPTIONS = [
-  { id: "1", label: "Venue Rental" },
-  { id: "2", label: "Catering Service" },
-  { id: "3", label: "Decoration" },
-  { id: "4", label: "Photography" },
-  { id: "5", label: "Audio/Visual" },
-  { id: "6", label: "Full Package" },
-];
+interface Venue {
+  venue_id: number;
+  venue_name: string;
+}
 
 export default function AddSchedule() {
   const router = useRouter();
+  const { user } = useAuth();
   const [notificationCount] = useState(0);
-  const [venueId] = useState(1); // TODO: Get from navigation params or context
-  const [venueAdminId] = useState(1); // TODO: Get from auth context
-  const [packageName, setPackageName] = useState("");
-  const [showPackageDropdown, setShowPackageDropdown] = useState(false);
-  const [price, setPrice] = useState("");
-  const [guestName, setGuestName] = useState("");
+  const [venueAdminId, setVenueAdminId] = useState<number | null>(null);
+  
+  // Venue Selection
+  const [venueId, setVenueId] = useState<number | null>(null);
+  const [venues, setVenues] = useState<Venue[]>([]);
+  const [showVenueDropdown, setShowVenueDropdown] = useState(false);
+  const [loadingVenues, setLoadingVenues] = useState(false);
+  
+  // Client Information
+  const [clientName, setClientName] = useState("");
+  const [clientEmail, setClientEmail] = useState("");
+  const [clientContact, setClientContact] = useState("");
+  
+  // Event Details
+  const [eventName, setEventName] = useState("");
+  const [guestCapacity, setGuestCapacity] = useState("");
   const [startDate, setStartDate] = useState("");
   const [startTime, setStartTime] = useState("");
   const [endTime, setEndTime] = useState("");
-  const [guestCapacity, setGuestCapacity] = useState("");
-  const [overtimeCharges, setOvertimeCharges] = useState("");
-  const [overtimeHours, setOvertimeHours] = useState("");
-  const [contactNumber1, setContactNumber1] = useState("");
-  const [email1, setEmail1] = useState("");
-  const [organizerName2, setOrganizerName2] = useState("");
-  const [contactNumber2, setContactNumber2] = useState("");
+  
+  // Organizer Information (Optional)
+  const [organizerName, setOrganizerName] = useState("");
+  const [organizerContact, setOrganizerContact] = useState("");
+  
+  // Notes
   const [notes, setNotes] = useState("");
-  const [discounts, setDiscounts] = useState("");
-  const [extraCharges, setExtraCharges] = useState("");
-  const [seasonalRates, setSeasonalRates] = useState<VenueSeasonalPricing[]>([]);
-  const [dynamicPrice, setDynamicPrice] = useState<number | null>(null);
-  const [priceAlert, setPriceAlert] = useState<string>("");
-  const [loadingPrices, setLoadingPrices] = useState(false);
+  
+  // UI States
   const [savingBooking, setSavingBooking] = useState(false);
   const [datePickerVisible, setDatePickerVisible] = useState(false);
   const [startTimePickerVisible, setStartTimePickerVisible] = useState(false);
   const [endTimePickerVisible, setEndTimePickerVisible] = useState(false);
 
-  // Load seasonal rates on mount
+  // Load venues on mount
   useEffect(() => {
-    loadSeasonalRates();
-  }, [venueId]);
-
-  // Recalculate price when dates or base price change
-  useEffect(() => {
-    if (startDate && price) {
-      calculateDynamicPrice();
-    } else {
-      setDynamicPrice(null);
-      setPriceAlert("");
+    if (user?.id) {
+      loadVenues(user.id);
     }
-  }, [startDate, price, seasonalRates]);
+  }, [user]);
 
-  const loadSeasonalRates = async () => {
+  const loadVenues = async (authId: string) => {
     try {
-      const { data, error } = await getActiveVenueSeasonalPricing(venueId);
-      if (error) {
-        console.error("Error loading seasonal rates:", error);
-      } else if (data) {
-        setSeasonalRates(data as VenueSeasonalPricing[]);
-      }
-    } catch (error) {
-      console.error("Error in loadSeasonalRates:", error);
-    }
-  };
+      setLoadingVenues(true);
 
-  const calculateDynamicPrice = async () => {
-    setLoadingPrices(true);
-    try {
-      const bookingStartDate = new Date(startDate);
-      const basePrice = parseFloat(price);
-
-      if (isNaN(basePrice) || basePrice <= 0) {
-        setDynamicPrice(null);
-        setPriceAlert("");
+      // Get auth user to verify identity (this gives us UUID)
+      const { data: { user: authUser } } = await supabase.auth.getUser();
+      if (!authUser) {
+        Alert.alert("Error", "Authentication failed. Please log in again.");
+        setLoadingVenues(false);
         return;
       }
 
-      // Find applicable seasonal rates
-      const applicableSeasons = findApplicableSeasons(
-        bookingStartDate,
-        bookingStartDate,
-        seasonalRates
-      );
+      console.log("Auth User UUID:", authUser.id);
 
-      if (applicableSeasons.length > 0) {
-        // Calculate seasonal price
-        const result = calculateSeasonalPrice(
-          basePrice,
-          bookingStartDate,
-          bookingStartDate,
-          applicableSeasons
-        );
+      // Step 1: Look up user_id (INTEGER) from users table using auth UUID
+      const { data: userData, error: userError } = await supabase
+        .from("users")
+        .select("user_id")
+        .eq("auth_id", authUser.id)
+        .limit(1);
 
-        setDynamicPrice(result.adjustedPrice);
-        setPriceAlert(result.description);
-      } else {
-        setDynamicPrice(null);
-        setPriceAlert("");
+      if (userError || !userData || userData.length === 0) {
+        console.error("Error fetching user by auth ID:", userError);
+        Alert.alert("Error", "Could not find user record. Please contact support.");
+        setLoadingVenues(false);
+        return;
       }
-    } catch (error) {
-      console.error("Error calculating dynamic price:", error);
-      setDynamicPrice(null);
-      setPriceAlert("");
+
+      const userId = userData[0].user_id;
+      console.log("Found user_id:", userId);
+
+      // Step 2: Query venues using the integer user_id
+      const { data: venuesData, error: venuesError } = await supabase
+        .from("venues")
+        .select("venue_id, venue_name")
+        .eq("created_by", userId)
+        .order("venue_name", { ascending: true });
+
+      if (venuesError) {
+        console.error("Error fetching venues:", venuesError);
+        Alert.alert("Error", "Failed to load venues");
+        setLoadingVenues(false);
+        return;
+      }
+
+      console.log("✅ Loaded venues:", venuesData?.length || 0);
+      setVenues(venuesData || []);
+
+      // Step 3: Try to get venue_admin_id for reference (optional)
+      try {
+        const { data: adminData } = await supabase
+          .from("venue_administrators")
+          .select("venue_admin_id")
+          .eq("user_id", userId)
+          .limit(1);
+
+        if (adminData && adminData.length > 0) {
+          setVenueAdminId(adminData[0].venue_admin_id);
+          console.log("✅ Loaded venue_admin_id:", adminData[0].venue_admin_id);
+        }
+      } catch (err) {
+        console.log("ℹ️ Could not load venue_admin_id, continuing anyway");
+      }
+    } catch (err) {
+      console.error("Error in loadVenues:", err);
+      Alert.alert("Error", "Failed to load venues");
     } finally {
-      setLoadingPrices(false);
+      setLoadingVenues(false);
     }
   };
 
-  const handleSelectPackage = (packageLabel: string) => {
-    setPackageName(packageLabel);
-    setShowPackageDropdown(false);
+  // Validate that selected date is at least 1 month from today
+  const isDateValid = (date: string): boolean => {
+    if (!date) return false;
+    
+    const selectedDate = new Date(date);
+    const today = new Date();
+    const oneMonthLater = new Date(today.getFullYear(), today.getMonth() + 1, today.getDate());
+    
+    return selectedDate >= oneMonthLater;
+  };
+
+  const handleDateSelect = (date: string) => {
+    if (!isDateValid(date)) {
+      Alert.alert(
+        "Invalid Date",
+        "Event date must be at least 1 month from today."
+      );
+      return;
+    }
+    setStartDate(date);
+    setDatePickerVisible(false);
   };
 
   const handleSave = async () => {
     // Validation
-    if (!guestName.trim()) {
-      Alert.alert("Error", "Guest name is required");
+    if (!venueAdminId) {
+      Alert.alert("Error", "Venue admin ID not loaded. Please go back and try again.");
       return;
     }
-    if (!email1.trim()) {
-      Alert.alert("Error", "Email is required");
+    if (!venueId) {
+      Alert.alert("Error", "Please select a venue");
       return;
     }
-    if (!contactNumber1.trim()) {
-      Alert.alert("Error", "Contact number is required");
+    if (!clientName.trim()) {
+      Alert.alert("Error", "Client name is required");
+      return;
+    }
+    if (!clientEmail.trim()) {
+      Alert.alert("Error", "Client email is required");
+      return;
+    }
+    if (!clientContact.trim()) {
+      Alert.alert("Error", "Client contact is required");
+      return;
+    }
+    if (!eventName.trim()) {
+      Alert.alert("Error", "Event name is required");
+      return;
+    }
+    if (!guestCapacity.trim()) {
+      Alert.alert("Error", "Guest capacity is required");
       return;
     }
     if (!startDate) {
@@ -169,66 +206,65 @@ export default function AddSchedule() {
       Alert.alert("Error", "End time is required");
       return;
     }
-    if (!guestCapacity) {
-      Alert.alert("Error", "Guest capacity is required");
-      return;
-    }
-    if (!price) {
-      Alert.alert("Error", "Price is required");
-      return;
-    }
 
     setSavingBooking(true);
     try {
-      const finalPrice = dynamicPrice || parseFloat(price);
-      
-      // Build pricing breakdown for notes
-      const pricingBreakdown = {
-        basePrice: parseFloat(price),
-        adjustedPrice: finalPrice,
-        discount: discounts ? parseFloat(discounts) : 0,
-        extraCharges: extraCharges ? parseFloat(extraCharges) : 0,
-        overtimeHours: overtimeHours ? parseInt(overtimeHours) : 0,
-        overtimeCharges: overtimeCharges ? parseFloat(overtimeCharges) : 0,
-        seasonalRateApplied: priceAlert || "No seasonal rate applied",
-      };
+      // If venue_admin_id is not set, try to get it from the venue assignment
+      let adminId = venueAdminId;
+      if (!adminId) {
+        console.warn("venue_admin_id not loaded, attempting to fetch from venue assignments");
+        const { data: assignmentData } = await supabase
+          .from("venue_admin_assignments")
+          .select("venue_admin_id")
+          .eq("venue_id", venueId)
+          .limit(1);
 
-      const combinedNotes = [
-        `Package: ${packageName}`,
-        `Pricing: ${JSON.stringify(pricingBreakdown)}`,
-        notes ? `Additional Notes: ${notes}` : "",
-      ]
-        .filter(Boolean)
-        .join("\n");
+        if (assignmentData && assignmentData.length > 0) {
+          adminId = assignmentData[0].venue_admin_id;
+          console.log("Fetched venue_admin_id from assignments:", adminId);
+        }
+      }
 
-      // Create booking
-      const { data, error } = await createVenueDirectBooking({
+      if (!adminId) {
+        Alert.alert("Error", "No venue administrator assigned. Please contact support.");
+        setSavingBooking(false);
+        return;
+      }
+
+      // Create booking with direct mapping to schema
+      const { error } = await createVenueDirectBooking({
         venue_id: venueId,
-        venue_admin_id: venueAdminId,
-        client_name: guestName,
-        client_email: email1,
-        client_contact: contactNumber1,
-        event_name: packageName || "Direct Booking",
+        venue_admin_id: adminId,
+        client_name: clientName,
+        client_email: clientEmail,
+        client_contact: clientContact,
+        event_name: eventName,
         event_date: startDate,
         time_start: startTime,
         time_end: endTime,
         guest_capacity: parseInt(guestCapacity),
-        organizer_name: organizerName2,
-        organizer_contact: contactNumber2,
-        status: "confirmed",
-        notes: combinedNotes,
+        organizer_name: organizerName || undefined,
+        organizer_contact: organizerContact || undefined,
+        status: 'confirmed', // Set to confirmed so it shows in calendar
+        notes: notes || undefined,
       });
 
       if (error) {
-        Alert.alert("Error", "Failed to save booking. Please try again.");
-        console.error("Booking error:", error);
+        console.error("Booking creation error:", error);
+        Alert.alert("Error", `Failed to save booking: ${JSON.stringify(error)}`);
         return;
       }
 
+      console.log("✅ Booking created successfully with status: confirmed");
       Alert.alert("Success", "Booking saved successfully!", [
         {
           text: "OK",
-          onPress: () => router.back(),
+          onPress: () => {
+            router.push({
+              pathname: "/users/venue_administrator",
+              params: { page: "venue_dashboard", venueId: venueId.toString() },
+            });
+          },
         },
       ]);
     } catch (err) {
@@ -258,38 +294,51 @@ export default function AddSchedule() {
 
         {/* Form */}
         <View style={styles.form}>
-          {/* Package Name Dropdown */}
-          <View style={styles.field}>
-            <Text style={styles.label}>Package Name/Type</Text>
-            <Pressable
-              style={styles.dropdownButton}
-              onPress={() => setShowPackageDropdown(true)}
-            >
-              <Text style={[styles.dropdownText, !packageName && { color: Theme.colors.muted }]}>
-                {packageName || "Package Name/Type"}
-              </Text>
-              <Ionicons name="chevron-down" size={18} color={Theme.colors.muted} />
-            </Pressable>
+          {/* Venue Selection Section */}
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Select Venue</Text>
           </View>
 
-          {/* Package Dropdown Modal */}
+          <View style={styles.field}>
+            <Text style={styles.label}>Venue *</Text>
+            {loadingVenues ? (
+              <View style={styles.loadingContainer}>
+                <ActivityIndicator size="small" color={Theme.colors.primary} />
+              </View>
+            ) : (
+              <Pressable
+                style={styles.dropdownButton}
+                onPress={() => setShowVenueDropdown(true)}
+              >
+                <Text style={[styles.dropdownText, !venueId && { color: Theme.colors.muted }]}>
+                  {venues.find(v => v.venue_id === venueId)?.venue_name || "Select Venue"}
+                </Text>
+                <Ionicons name="chevron-down" size={18} color={Theme.colors.muted} />
+              </Pressable>
+            )}
+          </View>
+
+          {/* Venue Dropdown Modal */}
           <Modal
-            visible={showPackageDropdown}
+            visible={showVenueDropdown}
             transparent
             animationType="fade"
-            onRequestClose={() => setShowPackageDropdown(false)}
+            onRequestClose={() => setShowVenueDropdown(false)}
           >
             <View style={styles.dropdownOverlay}>
               <View style={styles.dropdownMenu}>
                 <FlatList
-                  data={PACKAGE_OPTIONS}
-                  keyExtractor={(item) => item.id}
+                  data={venues}
+                  keyExtractor={(item) => item.venue_id.toString()}
                   renderItem={({ item }) => (
                     <Pressable
                       style={styles.dropdownItem}
-                      onPress={() => handleSelectPackage(item.label)}
+                      onPress={() => {
+                        setVenueId(item.venue_id);
+                        setShowVenueDropdown(false);
+                      }}
                     >
-                      <Text style={styles.dropdownItemText}>{item.label}</Text>
+                      <Text style={styles.dropdownItemText}>{item.venue_name}</Text>
                     </Pressable>
                   )}
                 />
@@ -297,127 +346,64 @@ export default function AddSchedule() {
             </View>
           </Modal>
 
-          {/* Event Date Picker */}
-          <View style={styles.row}>
-            <View style={[styles.field, { flex: 1 }]}>
-              <Text style={styles.label}>Event Date</Text>
-              <Pressable
-                style={styles.dateButton}
-                onPress={() => setDatePickerVisible(true)}
-              >
-                <Ionicons name="calendar" size={20} color={Theme.colors.primary} />
-                <Text style={styles.dateButtonText}>
-                  {startDate ? new Date(startDate).toLocaleDateString("en-US", {
-                    year: "numeric",
-                    month: "short",
-                    day: "numeric",
-                  }) : "Select Date"}
-                </Text>
-              </Pressable>
-            </View>
-          </View>
-          <View style={styles.row}>
-            <View style={[styles.field, { flex: 1 }]}>
-              <Text style={styles.label}>Base Price</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="₱"
-                placeholderTextColor={Theme.colors.muted}
-                value={price}
-                onChangeText={setPrice}
-                keyboardType="decimal-pad"
-              />
-            </View>
-            <View style={[styles.field, { flex: 1, marginLeft: 12 }]}>
-              <Text style={styles.label}>Guest</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="Enter guest name"
-                placeholderTextColor={Theme.colors.muted}
-                value={guestName}
-                onChangeText={setGuestName}
-              />
-            </View>
+          {/* Client Information Section */}
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Client Information</Text>
           </View>
 
-          {/* Dynamic Price Alert */}
-          {priceAlert && dynamicPrice && (
-            <View style={styles.dynamicPriceAlert}>
-              <Ionicons
-                name="information-circle"
-                size={20}
-                color={Theme.colors.primary}
-                style={styles.alertIcon}
-              />
-              <View style={styles.alertContent}>
-                <Text style={styles.alertMessage}>{priceAlert}</Text>
-                <Text style={styles.priceComparison}>
-                  ₱{price} → ₱{dynamicPrice.toFixed(2)}
-                </Text>
-              </View>
-            </View>
-          )}
-
-          {/* Overtime Row */}
-          <View style={styles.row}>
-            <View style={[styles.field, { flex: 1 }]}>
-              <Text style={styles.label}>Over Time Charges</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="(Optional) ₱"
-                placeholderTextColor={Theme.colors.muted}
-                value={overtimeCharges}
-                onChangeText={setOvertimeCharges}
-                keyboardType="decimal-pad"
-              />
-            </View>
-            <View style={[styles.field, { flex: 1, marginLeft: 12 }]}>
-              <Text style={styles.label}>Over Time Hour(s)</Text>
-              <View style={styles.timeRow}>
-                <TextInput
-                  style={[styles.input, { flex: 1 }]}
-                  placeholder="00:00"
-                  placeholderTextColor={Theme.colors.muted}
-                  value={overtimeHours}
-                  onChangeText={setOvertimeHours}
-                  keyboardType="number-pad"
-                />
-                <Text style={styles.timeLabel}>AM</Text>
-                <Text style={styles.timeLabel}>PM</Text>
-              </View>
-            </View>
-          </View>
-
-          {/* Event Organizer */}
-          <View style={styles.section}>
-            <View style={styles.row}>
-              <View style={[styles.field, { flex: 1 }]}>
-                <Text style={styles.label}>Event Organizer Name</Text>
-                <TextInput
-                  style={styles.input}
-                  placeholder="Enter here Name"
-                  placeholderTextColor={Theme.colors.muted}
-                  value={organizerName2}
-                  onChangeText={setOrganizerName2}
-                />
-              </View>
-              <View style={[styles.field, { flex: 1, marginLeft: 12 }]}>
-                <Text style={styles.label}>Contact Number</Text>
-                <TextInput
-                  style={styles.input}
-                  placeholder="+63 9392843915"
-                  placeholderTextColor={Theme.colors.muted}
-                  value={contactNumber2}
-                  onChangeText={setContactNumber2}
-                  keyboardType="phone-pad"
-                />
-              </View>
-            </View>
-          </View>
-
-          {/* Guest Capacity */}
           <View style={styles.field}>
-            <Text style={styles.label}>Guest Capacity</Text>
+            <Text style={styles.label}>Client Name *</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="Enter client name"
+              placeholderTextColor={Theme.colors.muted}
+              value={clientName}
+              onChangeText={setClientName}
+            />
+          </View>
+
+          <View style={styles.field}>
+            <Text style={styles.label}>Client Email *</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="user@example.com"
+              placeholderTextColor={Theme.colors.muted}
+              value={clientEmail}
+              onChangeText={setClientEmail}
+              keyboardType="email-address"
+            />
+          </View>
+
+          <View style={styles.field}>
+            <Text style={styles.label}>Client Contact Number *</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="+63 9392843915"
+              placeholderTextColor={Theme.colors.muted}
+              value={clientContact}
+              onChangeText={setClientContact}
+              keyboardType="phone-pad"
+            />
+          </View>
+
+          {/* Event Details Section */}
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Event Details</Text>
+          </View>
+
+          <View style={styles.field}>
+            <Text style={styles.label}>Event Name *</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="e.g., Wedding Reception"
+              placeholderTextColor={Theme.colors.muted}
+              value={eventName}
+              onChangeText={setEventName}
+            />
+          </View>
+
+          <View style={styles.field}>
+            <Text style={styles.label}>Guest Capacity *</Text>
             <TextInput
               style={styles.input}
               placeholder="Enter number of guests"
@@ -428,10 +414,31 @@ export default function AddSchedule() {
             />
           </View>
 
-          {/* Time Pickers Row */}
+          {/* Date & Time Selection */}
           <View style={styles.row}>
             <View style={[styles.field, { flex: 1 }]}>
-              <Text style={styles.label}>Start Time</Text>
+              <Text style={styles.label}>Event Date *</Text>
+              <Pressable
+                style={styles.dateButton}
+                onPress={() => setDatePickerVisible(true)}
+              >
+                <Ionicons name="calendar" size={20} color={Theme.colors.primary} />
+                <Text style={styles.dateButtonText}>
+                  {startDate
+                    ? new Date(startDate).toLocaleDateString("en-US", {
+                        year: "numeric",
+                        month: "short",
+                        day: "numeric",
+                      })
+                    : "Select Date"}
+                </Text>
+              </Pressable>
+            </View>
+          </View>
+
+          <View style={styles.row}>
+            <View style={[styles.field, { flex: 1 }]}>
+              <Text style={styles.label}>Start Time *</Text>
               <Pressable
                 style={styles.dateButton}
                 onPress={() => setStartTimePickerVisible(true)}
@@ -443,7 +450,7 @@ export default function AddSchedule() {
               </Pressable>
             </View>
             <View style={[styles.field, { flex: 1, marginLeft: 12 }]}>
-              <Text style={styles.label}>End Time</Text>
+              <Text style={styles.label}>End Time *</Text>
               <Pressable
                 style={styles.dateButton}
                 onPress={() => setEndTimePickerVisible(true)}
@@ -456,12 +463,40 @@ export default function AddSchedule() {
             </View>
           </View>
 
+          {/* Organizer Information Section (Optional) */}
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Organizer Information (Optional)</Text>
+          </View>
+
+          <View style={styles.field}>
+            <Text style={styles.label}>Organizer Name</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="Enter organizer name"
+              placeholderTextColor={Theme.colors.muted}
+              value={organizerName}
+              onChangeText={setOrganizerName}
+            />
+          </View>
+
+          <View style={styles.field}>
+            <Text style={styles.label}>Organizer Contact</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="+63 9392843915"
+              placeholderTextColor={Theme.colors.muted}
+              value={organizerContact}
+              onChangeText={setOrganizerContact}
+              keyboardType="phone-pad"
+            />
+          </View>
+
           {/* Notes */}
           <View style={styles.field}>
-            <Text style={styles.label}>Notes</Text>
+            <Text style={styles.label}>Notes (Optional)</Text>
             <TextInput
               style={[styles.input, styles.textarea]}
-              placeholder="user@example.com"
+              placeholder="Add any additional notes..."
               placeholderTextColor={Theme.colors.muted}
               value={notes}
               onChangeText={setNotes}
@@ -470,34 +505,9 @@ export default function AddSchedule() {
             />
           </View>
 
-          {/* Discounts & Extra Charges Row */}
-          <View style={styles.row}>
-            <View style={[styles.field, { flex: 1 }]}>
-              <Text style={styles.label}>Discounts</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="discounts"
-                placeholderTextColor={Theme.colors.muted}
-                value={discounts}
-                onChangeText={setDiscounts}
-              />
-            </View>
-            <View style={[styles.field, { flex: 1, marginLeft: 12 }]}>
-              <Text style={styles.label}>Extra Service Charges</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="₱"
-                placeholderTextColor={Theme.colors.muted}
-                value={extraCharges}
-                onChangeText={setExtraCharges}
-                keyboardType="decimal-pad"
-              />
-            </View>
-          </View>
-
           {/* Buttons */}
           <View style={styles.buttonContainer}>
-            <Pressable 
+            <Pressable
               style={[styles.saveButton, savingBooking && styles.buttonDisabled]}
               onPress={handleSave}
               disabled={savingBooking}
@@ -517,13 +527,13 @@ export default function AddSchedule() {
         </View>
       </ScrollView>
 
-      {/* Date Picker Modal */}
+      {/* Date Picker Modal with validation */}
       <DatePickerModal
         visible={datePickerVisible}
         onClose={() => setDatePickerVisible(false)}
-        onSelect={setStartDate}
+        onSelect={handleDateSelect}
         initialDate={startDate}
-        title="Select Event Date"
+        title="Select Event Date (1 month from today onwards)"
       />
 
       {/* Start Time Picker Modal */}
@@ -573,11 +583,17 @@ const styles = StyleSheet.create({
   field: {
     marginBottom: 8,
   },
-  section: {
-    marginBottom: 16,
+  sectionHeader: {
+    marginTop: 16,
+    marginBottom: 12,
     paddingBottom: 8,
     borderBottomWidth: 1,
     borderBottomColor: "#E0E0E0",
+  },
+  sectionTitle: {
+    fontFamily: Theme.fonts.bold,
+    fontSize: 14,
+    color: Theme.colors.primary,
   },
   label: {
     fontFamily: Theme.fonts.semibold,
@@ -610,6 +626,7 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: Theme.colors.text,
     flex: 1,
+    fontFamily: Theme.fonts.regular,
   },
   dropdownOverlay: {
     flex: 1,
@@ -635,39 +652,10 @@ const styles = StyleSheet.create({
     color: Theme.colors.text,
     fontFamily: Theme.fonts.regular,
   },
-  hint: {
-    fontFamily: Theme.fonts.regular,
-    fontSize: 11,
-    color: Theme.colors.muted,
-    marginTop: 4,
-  },
-  dynamicPriceAlert: {
-    backgroundColor: "#E3F2FD",
-    borderLeftWidth: 4,
-    borderLeftColor: Theme.colors.primary,
-    borderRadius: 8,
-    padding: 12,
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: 12,
-    marginBottom: 16,
-  },
-  alertIcon: {
-    marginTop: 2,
-  },
-  alertContent: {
-    flex: 1,
-  },
-  alertMessage: {
-    fontFamily: Theme.fonts.semibold,
-    fontSize: 13,
-    color: Theme.colors.primary,
-    marginBottom: 4,
-  },
-  priceComparison: {
-    fontFamily: Theme.fonts.bold,
-    fontSize: 13,
-    color: Theme.colors.primary,
+  loadingContainer: {
+    paddingVertical: 12,
+    justifyContent: "center",
+    alignItems: "center",
   },
   textarea: {
     textAlignVertical: "top",
@@ -692,17 +680,6 @@ const styles = StyleSheet.create({
     fontFamily: Theme.fonts.regular,
     fontSize: 14,
     color: Theme.colors.text,
-  },
-  timeRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-  timeLabel: {
-    fontFamily: Theme.fonts.semibold,
-    fontSize: 12,
-    color: Theme.colors.text,
-    paddingHorizontal: 8,
   },
   buttonContainer: {
     flexDirection: "row",

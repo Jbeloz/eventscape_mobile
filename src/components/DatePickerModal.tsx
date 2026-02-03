@@ -31,9 +31,9 @@ export default function DatePickerModal({
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   
-  // Max date is 1 month from today
-  const maxDate = new Date(today);
-  maxDate.setMonth(maxDate.getMonth() + 1);
+  // Minimum date is 1 month from today
+  const minDate = new Date(today);
+  minDate.setMonth(minDate.getMonth() + 1);
 
   useEffect(() => {
     if (visible) {
@@ -73,7 +73,7 @@ export default function DatePickerModal({
     const date = new Date(currentDate.getFullYear(), currentDate.getMonth(), day);
     date.setHours(0, 0, 0, 0);
     
-    if (date < today || date > maxDate) {
+    if (date < minDate) {
       return;
     }
     setSelectedDate(date);
@@ -114,7 +114,7 @@ export default function DatePickerModal({
         selectedDate.getMonth() === date.getMonth() &&
         selectedDate.getFullYear() === date.getFullYear();
 
-      const isDisabled = date < today || date > maxDate;
+      const isDisabled = date < minDate;
 
       days.push(
         <Pressable

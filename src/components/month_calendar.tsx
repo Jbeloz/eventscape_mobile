@@ -13,6 +13,7 @@ interface MonthCalendarProps {
   currentYear?: number;
   markedDates?: MarkedDate[];
   onDateSelect?: (day: number, month: number, year: number) => void;
+  onMonthChange?: (month: number, year: number) => void;
 }
 
 const MONTHS = [
@@ -37,6 +38,7 @@ export default function MonthCalendar({
   currentYear = 2025,
   markedDates = [],
   onDateSelect,
+  onMonthChange,
 }: MonthCalendarProps) {
   const [month, setMonth] = useState(currentMonth);
   const [year, setYear] = useState(currentYear);
@@ -83,7 +85,7 @@ export default function MonthCalendar({
   }
 
   // Next month days
-  const remainingDays = 42 - days.length; // 6 rows x 7 days
+  const remainingDays = 35 - days.length; // 5 rows x 7 days
   for (let i = 1; i <= remainingDays; i++) {
     days.push({
       day: i,
@@ -93,24 +95,40 @@ export default function MonthCalendar({
   }
 
   const handlePrevMonth = () => {
+    let newMonth = month;
+    let newYear = year;
+    
     if (month === 0) {
-      setMonth(11);
-      setYear(year - 1);
+      newMonth = 11;
+      newYear = year - 1;
     } else {
-      setMonth(month - 1);
+      newMonth = month - 1;
     }
+    
+    setMonth(newMonth);
+    setYear(newYear);
+    onMonthChange?.(newMonth, newYear);
   };
 
   const handleNextMonth = () => {
+    let newMonth = month;
+    let newYear = year;
+    
     if (month === 11) {
-      setMonth(0);
-      setYear(year + 1);
+      newMonth = 0;
+      newYear = year + 1;
     } else {
-      setMonth(month + 1);
+      newMonth = month + 1;
     }
+    
+    setMonth(newMonth);
+    setYear(newYear);
+    onMonthChange?.(newMonth, newYear);
   };
 
-  const getMarkedDateColor = (day: number) => {
+  const getMarkedDateColor = (day: number, isCurrentMonth: boolean) => {
+    // Only mark dates that are in the current viewing month
+    if (!isCurrentMonth) return undefined;
     const marked = markedDates.find((d) => d.day === day);
     return marked?.color;
   };
@@ -146,7 +164,7 @@ export default function MonthCalendar({
       {/* Calendar Grid */}
       <View style={styles.calendarGrid}>
         {days.map((dayObj, index) => {
-          const markedColor = getMarkedDateColor(dayObj.day);
+          const markedColor = getMarkedDateColor(dayObj.day, dayObj.isCurrentMonth);
           return (
             <Pressable
               key={index}
@@ -163,10 +181,9 @@ export default function MonthCalendar({
               <View
                 style={[
                   styles.dayContent,
-                  dayObj.isToday && styles.todayCircle,
                   markedColor && {
-                    borderWidth: 2,
-                    borderColor: markedColor,
+                    backgroundColor: markedColor,
+                    borderWidth: 0,
                   },
                 ]}
               >
@@ -174,7 +191,6 @@ export default function MonthCalendar({
                   style={[
                     styles.dayText,
                     !dayObj.isCurrentMonth && styles.dayTextOutOfMonth,
-                    dayObj.isToday && styles.dayTextToday,
                   ]}
                 >
                   {dayObj.day}
@@ -193,9 +209,8 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#E0E0E0",
     borderRadius: 8,
-    padding: 12,
+    padding: 8,
     backgroundColor: "#FFFFFF",
-    marginBottom: 16,
     overflow: "hidden",
   },
   navigation: {
@@ -243,6 +258,10 @@ const styles = StyleSheet.create({
   },
   todayCircle: {
     backgroundColor: "#20B2AA",
+  },
+  todayBorder: {
+    borderWidth: 2,
+    borderColor: "#2196F3",
   },
   dayText: {
     fontFamily: Theme.fonts.semibold,

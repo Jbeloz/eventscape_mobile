@@ -17,11 +17,10 @@ export default function ThemeImageGallery({
   if (!images || images.length === 0) {
     return (
       <View style={styles.emptyContainer}>
-        <Image
-          source={{ uri: "https://via.placeholder.com/300x300?text=No+Images" }}
-          style={styles.mainImage}
-          resizeMode="contain"
-        />
+        <View style={styles.placeholderImage}>
+          <Ionicons name="image-outline" size={48} color={Theme.colors.muted} />
+          <Text style={styles.placeholderText}>No Images Available</Text>
+        </View>
       </View>
     );
   }
@@ -163,5 +162,21 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 4,
+  },
+  placeholderImage: {
+    width: "100%",
+    height: 300,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: Theme.colors.background,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#EFEFEF",
+  },
+  placeholderText: {
+    marginTop: 12,
+    fontSize: 14,
+    color: Theme.colors.muted,
+    fontFamily: Theme.fonts.medium,
   },
 });

@@ -85,7 +85,7 @@ export default function VenueAdminMyVenue() {
       const formattedVenues: Venue[] = await Promise.all(
         (venuesData || []).map(async (venue: any) => {
           let typeName = "Unknown Type";
-          let imageUri = "https://via.placeholder.com/300x200?text=No+Image";
+          let imageUri = "";
 
           // Fetch venue type
           if (venue.venue_type_id) {
@@ -196,10 +196,16 @@ export default function VenueAdminMyVenue() {
               >
                 {/* Venue Images Container */}
                 <View style={styles.imagesContainer}>
-                  <Image
-                    source={{ uri: venue.image_uri }}
-                    style={styles.venueImage}
-                  />
+                  {venue.image_uri ? (
+                    <Image
+                      source={{ uri: venue.image_uri }}
+                      style={styles.venueImage}
+                    />
+                  ) : (
+                    <View style={styles.placeholderImage}>
+                      <Ionicons name="image-outline" size={40} color={Theme.colors.muted} />
+                    </View>
+                  )}
                 </View>
 
                 {/* Venue Info */}
@@ -324,6 +330,14 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: "#999",
     textAlign: "center",
+  },
+  placeholderImage: {
+    width: "100%",
+    height: 150,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "#F5F5F5",
+    borderRadius: 6,
   },
 
   // Venue List

@@ -3,6 +3,7 @@ import { useState } from "react";
 import {
   Modal,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -46,13 +47,26 @@ export default function BlockedDatesModal({
   onClose,
   onSubmit,
 }: BlockedDatesModalProps) {
-  const [startMonth, setStartMonth] = useState("January");
-  const [startDay, setStartDay] = useState("05");
-  const [startYear, setStartYear] = useState("2025");
-  const [endMonth, setEndMonth] = useState("January");
-  const [endDay, setEndDay] = useState("05");
-  const [endYear, setEndYear] = useState("2025");
+  // Initialize with current date
+  const getCurrentDateDefaults = () => {
+    const today = new Date();
+    return {
+      month: MONTHS[today.getMonth()],
+      day: String(today.getDate()).padStart(2, "0"),
+      year: String(today.getFullYear()),
+    };
+  };
+
+  const currentDate = getCurrentDateDefaults();
+  const [startMonth, setStartMonth] = useState(currentDate.month);
+  const [startDay, setStartDay] = useState(currentDate.day);
+  const [startYear, setStartYear] = useState(currentDate.year);
+  const [endMonth, setEndMonth] = useState(currentDate.month);
+  const [endDay, setEndDay] = useState(currentDate.day);
+  const [endYear, setEndYear] = useState(currentDate.year);
   const [reason, setReason] = useState("");
+  const [showStartMonthPicker, setShowStartMonthPicker] = useState(false);
+  const [showEndMonthPicker, setShowEndMonthPicker] = useState(false);
 
   const handleBlockedDates = () => {
     onSubmit({
@@ -68,12 +82,13 @@ export default function BlockedDatesModal({
   };
 
   const resetForm = () => {
-    setStartMonth("January");
-    setStartDay("05");
-    setStartYear("2025");
-    setEndMonth("January");
-    setEndDay("05");
-    setEndYear("2025");
+    const currentDate = getCurrentDateDefaults();
+    setStartMonth(currentDate.month);
+    setStartDay(currentDate.day);
+    setStartYear(currentDate.year);
+    setEndMonth(currentDate.month);
+    setEndDay(currentDate.day);
+    setEndYear(currentDate.year);
     setReason("");
   };
 
@@ -99,14 +114,17 @@ export default function BlockedDatesModal({
           </View>
 
           {/* Content */}
-          <View style={styles.content}>
+          <ScrollView style={styles.content}>
             {/* Start Date */}
             <View style={styles.section}>
               <Text style={styles.label}>Start Date</Text>
               <View style={styles.dateRow}>
-                <View style={styles.dateSelect}>
+                <Pressable 
+                  style={styles.dateSelect}
+                  onPress={() => setShowStartMonthPicker(true)}
+                >
                   <Text style={styles.dateText}>{startMonth}</Text>
-                </View>
+                </Pressable>
                 <TextInput
                   style={styles.dateInput}
                   placeholder="05"
@@ -135,9 +153,12 @@ export default function BlockedDatesModal({
             <View style={styles.section}>
               <Text style={styles.label}>End Date</Text>
               <View style={styles.dateRow}>
-                <View style={styles.dateSelect}>
+                <Pressable 
+                  style={styles.dateSelect}
+                  onPress={() => setShowEndMonthPicker(true)}
+                >
                   <Text style={styles.dateText}>{endMonth}</Text>
-                </View>
+                </Pressable>
                 <TextInput
                   style={styles.dateInput}
                   placeholder="05"
@@ -175,7 +196,7 @@ export default function BlockedDatesModal({
                 numberOfLines={4}
               />
             </View>
-          </View>
+          </ScrollView>
 
           {/* Buttons */}
           <View style={styles.buttonContainer}>
@@ -191,6 +212,88 @@ export default function BlockedDatesModal({
           </View>
         </View>
       </View>
+
+      {/* Start Month Picker */}
+      <Modal
+        visible={showStartMonthPicker}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowStartMonthPicker(false)}
+      >
+        <Pressable 
+          style={styles.monthPickerOverlay}
+          onPress={() => setShowStartMonthPicker(false)}
+        >
+          <View style={styles.monthPickerContainer}>
+            <Text style={styles.monthPickerTitle}>Select Start Month</Text>
+            <ScrollView>
+              {MONTHS.map((month) => (
+                <Pressable
+                  key={month}
+                  style={[
+                    styles.monthOption,
+                    startMonth === month && styles.monthOptionSelected,
+                  ]}
+                  onPress={() => {
+                    setStartMonth(month);
+                    setShowStartMonthPicker(false);
+                  }}
+                >
+                  <Text
+                    style={[
+                      styles.monthOptionText,
+                      startMonth === month && styles.monthOptionTextSelected,
+                    ]}
+                  >
+                    {month}
+                  </Text>
+                </Pressable>
+              ))}
+            </ScrollView>
+          </View>
+        </Pressable>
+      </Modal>
+
+      {/* End Month Picker */}
+      <Modal
+        visible={showEndMonthPicker}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowEndMonthPicker(false)}
+      >
+        <Pressable 
+          style={styles.monthPickerOverlay}
+          onPress={() => setShowEndMonthPicker(false)}
+        >
+          <View style={styles.monthPickerContainer}>
+            <Text style={styles.monthPickerTitle}>Select End Month</Text>
+            <ScrollView>
+              {MONTHS.map((month) => (
+                <Pressable
+                  key={month}
+                  style={[
+                    styles.monthOption,
+                    endMonth === month && styles.monthOptionSelected,
+                  ]}
+                  onPress={() => {
+                    setEndMonth(month);
+                    setShowEndMonthPicker(false);
+                  }}
+                >
+                  <Text
+                    style={[
+                      styles.monthOptionText,
+                      endMonth === month && styles.monthOptionTextSelected,
+                    ]}
+                  >
+                    {month}
+                  </Text>
+                </Pressable>
+              ))}
+            </ScrollView>
+          </View>
+        </Pressable>
+      </Modal>
     </Modal>
   );
 }
@@ -209,6 +312,7 @@ const styles = StyleSheet.create({
     maxWidth: 400,
     paddingHorizontal: 16,
     paddingVertical: 16,
+    maxHeight: "80%",
   },
   header: {
     flexDirection: "row",
@@ -223,6 +327,7 @@ const styles = StyleSheet.create({
   },
   content: {
     marginBottom: 16,
+    maxHeight: 300,
   },
   section: {
     marginBottom: 16,
@@ -298,5 +403,45 @@ const styles = StyleSheet.create({
     fontFamily: Theme.fonts.semibold,
     fontSize: 13,
     color: Theme.colors.primary,
+  },
+  monthPickerOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  monthPickerContainer: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 12,
+    width: "80%",
+    maxHeight: "80%",
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+  },
+  monthPickerTitle: {
+    fontFamily: Theme.fonts.bold,
+    fontSize: 16,
+    color: Theme.colors.text,
+    marginBottom: 16,
+    textAlign: "center",
+  },
+  monthOption: {
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    borderRadius: 6,
+    marginBottom: 8,
+    backgroundColor: "#F5F5F5",
+  },
+  monthOptionSelected: {
+    backgroundColor: Theme.colors.primary,
+  },
+  monthOptionText: {
+    fontFamily: Theme.fonts.regular,
+    fontSize: 14,
+    color: Theme.colors.text,
+  },
+  monthOptionTextSelected: {
+    color: "#FFFFFF",
+    fontFamily: Theme.fonts.semibold,
   },
 });

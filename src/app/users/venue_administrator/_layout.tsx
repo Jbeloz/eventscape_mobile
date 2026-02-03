@@ -16,9 +16,6 @@ export default function VenueAdministratorLayout() {
       <Stack.Screen name="add_schedule" />
       <Stack.Screen name="seasonal_rates" />
       <Stack.Screen name="venue_dashboard" />
-      <Stack.Group screenOptions={{ presentation: 'modal' }}>
-        <Stack.Screen name="my_venue" />
-      </Stack.Group>
     </Stack>
   )
 }
